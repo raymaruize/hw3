@@ -458,7 +458,38 @@
             {% if info.error %}
               <div class="note danger">{{ info.error }}</div>
             {% elif not info.arrivals %}
-              <div class="note">No upcoming buses found.</div>
+              <div class="arrivals">
+                <div class="arrival missed" style="opacity:1;">
+                  <div class="arrival-inner">
+                    <div class="chips">
+                      <div class="chip">LINE {{ cfg.route }}</div>
+                      <div class="chip best" style="border-color: rgba(0,0,0,0.06); background: rgba(0,0,0,0.03); color: var(--muted);">No service</div>
+                    </div>
+                    <div class="row-main">
+                      <div>
+                        <div class="eta mono">--:--</div>
+                        <div class="eta-sub">Bus ETA</div>
+                      </div>
+                      <div class="leavein-wrap">
+                        <div class="leavein-label">Leave in</div>
+                        <div class="leavein mono missed">—</div>
+                      </div>
+                    </div>
+                    <div class="row-sub">
+                      <div class="subbox">
+                        <div class="lbl">Last bus</div>
+                        <div class="val mono">{{ state.last_seen_arrival.strftime('%H:%M') if state and state.last_seen_arrival else 'Unknown' }}</div>
+                      </div>
+                      <div class="arrow" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M13.5 5l-1.4 1.4 4.1 4.1H4v2h12.2l-4.1 4.1L13.5 18l7-7-7-6z"/></svg></div>
+                      <div class="subbox" style="text-align:right;">
+                        <div class="lbl">Safety buffer</div>
+                        <div class="val mono">{{ ((cfg.leave_buffer_minutes|int) + ((cfg.extra_safety_seconds|int)/60.0))|round(1) }}m</div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+              <div class="note">No upcoming buses right now.</div>
             {% else %}
               {% set buf_min = (cfg.leave_buffer_minutes|int) + ((cfg.extra_safety_seconds|int) / 60.0) %}
               <div class="arrivals">

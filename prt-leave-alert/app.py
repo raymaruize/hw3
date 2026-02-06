@@ -22,6 +22,7 @@ app = Flask(__name__)
 state = {
     "last_sent": {},  # key -> timestamp
     "telegram_update_offset": None,  # used by getUpdates polling
+    "last_seen_arrival": None,  # datetime of last observed arrival (best-effort)
 }
 
 
@@ -145,6 +146,9 @@ def build_next_bus_reply(cfg: dict, now: dt.datetime | None = None) -> str:
         return f"Error fetching arrivals: {e}"
 
     if not arrivals:
+        last = state.get("last_seen_arrival")
+        if last:
+            return f"No upcoming buses found right now. Last seen bus arrival was {last.strftime('%H:%M')}."
         return "No upcoming buses found for this stop right now."
 
     arrivals = arrivals[:2]
@@ -202,6 +206,12 @@ def maybe_send_reminders():
         return
     if not arrivals:
         return
+
+    # remember last seen arrival time (best-effort)
+    try:
+        state["last_seen_arrival"] = arrivals[0]
+    except Exception:
+        pass
 
     arrivals = arrivals[:2]
     leave_times = compute_leave_times(arrivals, leave_buffer, extra_safety)
@@ -321,7 +331,7 @@ def index():
     except Exception as e:
         info["error"] = str(e)
 
-    return render_template("index.html", cfg=cfg, info=info, now=now)
+    return render_template("index.html", cfg=cfg, info=info, now=now, state=state)
 
 
 @app.route("/api/next", methods=["GET"])
@@ -332,6 +342,10 @@ def api_next():
 
     try:
         arrivals = next_arrivals(cfg["from_stop_id"], cfg.get("route"), now=now, rtpi_datafeed=cfg.get("rtpidatafeed"))[:3]
+        # remember last seen arrival time (best-effort)
+        if arrivals:
+            state["last_seen_arrival"] = arrivals[0]
+
         leave_times = compute_leave_times(
             arrivals,
             int(cfg.get("leave_buffer_minutes", 6)),
@@ -345,6 +359,7 @@ def api_next():
             "stop_id": cfg.get("from_stop_id"),
             "route": cfg.get("route"),
             "buffer_minutes": buf_min,
+            "last_seen_bus_arrival_hhmm": state.get("last_seen_arrival").strftime("%H:%M") if state.get("last_seen_arrival") else None,
             "arrivals": [
                 {
                     "index": i + 1,

@@ -263,8 +263,8 @@
       arrivalsEl.innerHTML = '';
       for (const a of arrivals){
         const div = document.createElement('div');
-        div.className = 'arrival';
-        div.setAttribute('data-leave-ts', String(a.leaveTs));
+        div.className = 'arrival' + (a.noService ? ' missed' : '');
+        div.setAttribute('data-leave-ts', String(a.leaveTs || 0));
         div.innerHTML = `
           <div class="arrival-inner">
             <div class="chips">
@@ -278,13 +278,13 @@
               </div>
               <div class="leavein-wrap">
                 <div class="leavein-label">Leave in</div>
-                <div class="leavein mono" data-countdown>—</div>
+                <div class="leavein mono" data-countdown>${a.noService ? '—' : '—'}</div>
               </div>
             </div>
             <div class="row-sub">
               <div class="subbox">
                 <div class="lbl">Leave by</div>
-                <div class="val mono">${a.leaveAt}</div>
+                <div class="val mono">${a.noService ? a.leaveAt : a.leaveAt}</div>
               </div>
               <div class="arrow" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M13.5 5l-1.4 1.4 4.1 4.1H4v2h12.2l-4.1 4.1L13.5 18l7-7-7-6z"/></svg></div>
               <div class="subbox" style="text-align:right;">
@@ -329,6 +329,17 @@
         buffer: buf.toFixed(1),
         best: idx === 0,
       }));
+
+      // If there are no arrivals, render a placeholder and show last seen bus time if available.
+      if (arrivals.length === 0) {
+        const last = data.last_seen_bus_arrival_hhmm || 'Unknown';
+        return {
+          now: new Date(data.now || Date.now()),
+          arrivals: [
+            { route, eta: '--:--', leaveAt: last, leaveTs: 0, buffer: buf.toFixed(1), best: true, noService: true }
+          ]
+        };
+      }
 
       // If live data is working, hide the base URL controls to reduce clutter.
       if (modeSub) modeSub.textContent = 'Live updates';
