@@ -4,7 +4,7 @@ import datetime as dt
 from pathlib import Path
 
 import requests
-from flask import Flask, render_template, request, redirect, url_for
+from flask import Flask, render_template, request, redirect, url_for, jsonify
 from apscheduler.schedulers.background import BackgroundScheduler
 from dotenv import load_dotenv
 
@@ -313,6 +313,48 @@ def index():
         info["error"] = str(e)
 
     return render_template("index.html", cfg=cfg, info=info, now=now)
+
+
+@app.route("/api/next", methods=["GET"])
+def api_next():
+    """CORS-friendly JSON endpoint for a static frontend (e.g., GitHub Pages)."""
+    cfg = load_config()
+    now = dt.datetime.now()
+
+    try:
+        arrivals = next_arrivals(cfg["from_stop_id"], cfg.get("route"), now=now, rtpi_datafeed=cfg.get("rtpidatafeed"))[:3]
+        leave_times = compute_leave_times(
+            arrivals,
+            int(cfg.get("leave_buffer_minutes", 6)),
+            int(cfg.get("extra_safety_seconds", 30)),
+        )
+
+        buf_min = float(cfg.get("leave_buffer_minutes", 6)) + float(cfg.get("extra_safety_seconds", 30)) / 60.0
+
+        out = {
+            "now": now.isoformat(),
+            "stop_id": cfg.get("from_stop_id"),
+            "route": cfg.get("route"),
+            "buffer_minutes": buf_min,
+            "arrivals": [
+                {
+                    "index": i + 1,
+                    "bus_arrival_iso": a.isoformat(),
+                    "leave_iso": lt.isoformat(),
+                    "bus_arrival_hhmm": a.strftime("%H:%M"),
+                    "leave_hhmm": lt.strftime("%H:%M"),
+                }
+                for i, (a, lt) in enumerate(zip(arrivals, leave_times))
+            ],
+        }
+
+        resp = jsonify(out)
+    except Exception as e:
+        resp = jsonify({"error": str(e)})
+
+    # Allow static frontends to call this endpoint.
+    resp.headers["Access-Control-Allow-Origin"] = "*"
+    return resp
 
 
 @app.route("/update", methods=["POST"])
