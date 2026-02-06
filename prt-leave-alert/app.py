@@ -13,6 +13,7 @@ from notifier import send_telegram
 
 APP_DIR = Path(__file__).parent
 CONFIG_PATH = APP_DIR / "config.json"
+CONFIG_EXAMPLE_PATH = APP_DIR / "config.example.json"
 
 load_dotenv()  # loads .env if present (not committed)
 
@@ -25,9 +26,17 @@ state = {
 
 
 def load_config() -> dict:
-    if not CONFIG_PATH.exists():
+    """Load config.
+
+    - Prefer local config.json (user-specific; ignored by git)
+    - Fall back to config.example.json (safe defaults; committed)
+
+    This allows cloud deploys (e.g., Render) to run without requiring a writable config.json.
+    """
+    path = CONFIG_PATH if CONFIG_PATH.exists() else CONFIG_EXAMPLE_PATH
+    if not path.exists():
         raise RuntimeError("Missing config.json (copy from config.example.json)")
-    return json.loads(CONFIG_PATH.read_text())
+    return json.loads(path.read_text())
 
 
 def save_config(cfg: dict) -> None:
