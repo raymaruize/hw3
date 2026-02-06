@@ -1,0 +1,341 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>PRT Alert (Static)</title>
+  <meta name="description" content="PRT Alert UI (static demo for GitHub Pages)." />
+  <style>
+    :root {
+      --bg0: #f6f7fb;
+      --bg1: #f2f6ff;
+      --fg: #0b1220;
+      --muted: rgba(11,18,32,0.62);
+      --muted2: rgba(11,18,32,0.44);
+      --card: rgba(255,255,255,0.86);
+      --card2: rgba(255,255,255,0.74);
+      --border: rgba(11,18,32,0.10);
+      --shadow: 0 14px 38px rgba(0,0,0,0.10);
+      --accent: #0a84ff;
+      --accent2: #5e5ce6;
+      --ok: #34c759;
+      --warn: #ff9f0a;
+      --danger: #ff3b30;
+      --radius: 22px;
+    }
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --bg0: #070a12;
+        --bg1: #0b1220;
+        --fg: #e5e7eb;
+        --muted: rgba(229,231,235,0.66);
+        --muted2: rgba(229,231,235,0.44);
+        --card: rgba(15,23,42,0.70);
+        --card2: rgba(15,23,42,0.58);
+        --border: rgba(229,231,235,0.10);
+        --shadow: 0 18px 50px rgba(0,0,0,0.32);
+        --accent: #0a84ff;
+        --accent2: #7c7cff;
+        --ok: #32d74b;
+        --warn: #ffd60a;
+        --danger: #ff453a;
+      }
+    }
+    html, body { height: 100%; }
+    body {
+      margin: 0;
+      color: var(--fg);
+      font-family: system-ui, -apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text", Segoe UI, Roboto, Arial;
+      -webkit-font-smoothing: antialiased;
+      background:
+        radial-gradient(900px 600px at 12% -20%, rgba(10,132,255,0.10), transparent 60%),
+        radial-gradient(900px 600px at 88% -10%, rgba(94,92,230,0.08), transparent 62%),
+        linear-gradient(180deg, var(--bg0), var(--bg1));
+    }
+    .mono { font-variant-numeric: tabular-nums; font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace; }
+    .container {
+      max-width: 980px;
+      margin: 0 auto;
+      padding: 16px;
+      padding-left: max(16px, env(safe-area-inset-left));
+      padding-right: max(16px, env(safe-area-inset-right));
+      padding-bottom: max(22px, env(safe-area-inset-bottom));
+    }
+
+    .topbar {
+      position: sticky;
+      top: 0;
+      z-index: 10;
+      margin: -16px -16px 12px -16px;
+      padding: 12px 16px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      border-bottom: 1px solid var(--border);
+      background: rgba(255,255,255,0.58);
+      backdrop-filter: blur(16px);
+      -webkit-backdrop-filter: blur(16px);
+    }
+    @media (prefers-color-scheme: dark) {
+      .topbar { background: rgba(8,12,20,0.56); }
+    }
+    .brand { display:flex; align-items:center; gap: 10px; }
+    .logo {
+      width: 36px; height: 36px; border-radius: 999px;
+      display:grid; place-items:center;
+      background: linear-gradient(180deg, rgba(10,132,255,0.95), rgba(94,92,230,0.92));
+    }
+    .logo svg { width: 18px; height: 18px; fill: white; }
+    .title-wrap { display:flex; flex-direction: column; gap: 2px; }
+    .title { font-weight: 700; letter-spacing: -0.02em; font-size: 16px; line-height: 1.1; }
+    .subtitle { font-size: 12px; color: var(--muted); letter-spacing: 0.08em; text-transform: uppercase; }
+
+    .pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 8px 12px;
+      border-radius: 999px;
+      border: 1px solid var(--border);
+      background: rgba(255,255,255,0.42);
+      color: var(--muted);
+      font-size: 13px;
+    }
+    @media (prefers-color-scheme: dark) {
+      .pill { background: rgba(15,23,42,0.44); }
+    }
+    .dot { width: 9px; height: 9px; border-radius: 999px; background: var(--ok); box-shadow: 0 0 0 4px rgba(52,199,89,0.16); }
+
+    .grid { display:grid; grid-template-columns: 1fr; gap: 14px; }
+
+    .card {
+      border-radius: var(--radius);
+      border: 1px solid var(--border);
+      background: var(--card);
+      box-shadow: var(--shadow);
+      overflow: clip;
+    }
+    .card-inner { padding: 16px; }
+
+    .section-title { margin: 4px 0 4px 0; font-size: 28px; font-weight: 800; letter-spacing: -0.03em; }
+    .section-sub { margin: 0 0 10px 0; font-size: 12px; letter-spacing: 0.10em; text-transform: uppercase; color: var(--muted); }
+
+    .arrivals { display: grid; grid-template-columns: 1fr; gap: 12px; }
+    .arrival { border-radius: var(--radius); border: 1px solid var(--border); background: var(--card2); }
+    .arrival-inner { padding: 14px; }
+
+    .chips { display:flex; align-items:center; gap: 8px; margin-bottom: 10px; }
+    .chip { font-size: 11px; letter-spacing: 0.10em; text-transform: uppercase; padding: 7px 10px; border-radius: 999px; border: 1px solid var(--border); color: var(--muted); background: rgba(255,255,255,0.36); }
+    @media (prefers-color-scheme: dark) { .chip { background: rgba(15,23,42,0.38); } }
+
+    .row-main { display:grid; grid-template-columns: 1fr auto; gap: 10px; align-items: baseline; }
+    .eta { font-size: 44px; font-weight: 800; letter-spacing: -0.03em; line-height: 1; }
+    .eta-sub { margin-top: 6px; font-size: 12px; letter-spacing: 0.10em; text-transform: uppercase; color: var(--muted); }
+
+    .leavein-wrap { text-align: right; }
+    .leavein-label { font-size: 11px; letter-spacing: 0.12em; text-transform: uppercase; color: var(--muted2); }
+    .leavein { font-size: 40px; font-weight: 800; letter-spacing: -0.03em; line-height: 1; }
+    .leavein.soon { color: var(--warn); }
+    .leavein.missed { color: var(--danger); }
+
+    .row-sub { margin-top: 14px; display:grid; grid-template-columns: 1fr 24px 1fr; gap: 10px; align-items: center; padding-top: 12px; border-top: 1px solid rgba(0,0,0,0.06); }
+    @media (prefers-color-scheme: dark) { .row-sub { border-top-color: rgba(255,255,255,0.08); } }
+    .subbox { display:flex; flex-direction: column; gap: 4px; }
+    .subbox .lbl { font-size: 11px; letter-spacing: 0.12em; text-transform: uppercase; color: var(--muted2); }
+    .subbox .val { font-size: 20px; font-weight: 750; letter-spacing: -0.01em; }
+
+    .arrow { width: 24px; height: 24px; border-radius: 999px; border: 1px solid var(--border); background: rgba(255,255,255,0.30); display:grid; place-items:center; }
+    @media (prefers-color-scheme: dark) { .arrow { background: rgba(15,23,42,0.34); } }
+    .arrow svg { width: 14px; height: 14px; fill: var(--muted); }
+
+    .note { margin-top: 12px; color: var(--muted); font-size: 13px; }
+    .warnbox {
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      padding: 12px 12px;
+      background: rgba(255,255,255,0.42);
+      color: var(--muted);
+      font-size: 13px;
+      line-height: 1.35;
+    }
+    @media (prefers-color-scheme: dark) { .warnbox { background: rgba(15,23,42,0.40); } }
+
+    .row { display:flex; gap: 10px; flex-wrap: wrap; align-items: center; }
+    input {
+      padding: 10px 12px;
+      border-radius: 12px;
+      border: 1px solid var(--border);
+      background: rgba(255,255,255,0.52);
+      color: var(--fg);
+      font-size: 14px;
+      outline: none;
+      flex: 1;
+      min-width: 200px;
+    }
+    @media (prefers-color-scheme: dark) { input { background: rgba(15,23,42,0.48); } }
+    button {
+      padding: 10px 14px;
+      border-radius: 12px;
+      border: 1px solid rgba(0,0,0,0.08);
+      background: linear-gradient(180deg, var(--accent), var(--accent2));
+      color: white;
+      font-weight: 800;
+      cursor: pointer;
+    }
+    .hint { color: var(--muted2); font-size: 12px; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="topbar">
+      <div class="brand">
+        <div class="logo" aria-hidden="true">
+          <svg viewBox="0 0 24 24"><path d="M7 4c-1.66 0-3 1.34-3 3v9.5c0 .83.67 1.5 1.5 1.5L5 20a1 1 0 0 0 1 1h1a1 1 0 0 0 1-1v-1h8v1a1 1 0 0 0 1 1h1a1 1 0 0 0 1-1l-.5-2H19.5c.83 0 1.5-.67 1.5-1.5V7c0-1.66-1.34-3-3-3H7zm0 2h11c.55 0 1 .45 1 1v2H6V7c0-.55.45-1 1-1zm-1 5h13v5.5c0 .28-.22.5-.5.5h-13c-.28 0-.5-.22-.5-.5V11zm2 6.5a1 1 0 1 1 0-2 1 1 0 0 1 0 2zm10 0a1 1 0 1 1 0-2 1 1 0 0 1 0 2z"/></svg>
+        </div>
+        <div class="title-wrap">
+          <div class="title">PRT Alert</div>
+          <div class="subtitle">Static demo</div>
+        </div>
+      </div>
+      <div class="pill"><span class="dot"></span><span class="mono" id="now">—</span></div>
+    </div>
+
+    <div class="grid">
+      <div class="card">
+        <div class="card-inner">
+          <div class="section-title">Next Arrivals</div>
+          <div class="section-sub">Updated real-time</div>
+
+          <div class="warnbox" id="corsNote">
+            This is a <b>GitHub Pages static demo</b>. PRT TrueTime does <b>not</b> send CORS headers, so a browser page cannot call it directly.
+            To show live data here, you need a small backend/proxy endpoint (for example your existing Flask app, deployed somewhere) and set an API base URL below.
+          </div>
+
+          <div style="height: 12px"></div>
+
+          <div class="row">
+            <input id="apiBase" placeholder="Optional: https://your-backend.example.com" />
+            <button id="saveBase">Use</button>
+          </div>
+          <div class="hint">If provided, the page will call <span class="mono">{API_BASE}/api/next</span> and render real arrivals. Otherwise it uses mock data.</div>
+
+          <div style="height: 16px"></div>
+
+          <div class="arrivals" id="arrivals"></div>
+          <div class="note">Countdown updates live. Refresh to fetch new data.</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const nowEl = document.getElementById('now');
+    const arrivalsEl = document.getElementById('arrivals');
+    const apiBaseInput = document.getElementById('apiBase');
+
+    const storedBase = localStorage.getItem('API_BASE') || '';
+    apiBaseInput.value = storedBase;
+
+    document.getElementById('saveBase').addEventListener('click', () => {
+      localStorage.setItem('API_BASE', apiBaseInput.value.trim());
+      location.reload();
+    });
+
+    function pad(n){ return String(n).padStart(2,'0'); }
+    function fmtNow(d){
+      return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
+    }
+    function fmtDelta(ms){
+      const s = Math.round(ms/1000);
+      const abs = Math.abs(s);
+      if (abs < 60) return `${abs}s`;
+      const m = Math.floor(abs/60);
+      const ss = abs % 60;
+      return `${m}m${pad(ss)}s`;
+    }
+
+    function render(arrivals){
+      arrivalsEl.innerHTML = '';
+      for (const a of arrivals){
+        const div = document.createElement('div');
+        div.className = 'arrival';
+        div.setAttribute('data-leave-ts', String(a.leaveTs));
+        div.innerHTML = `
+          <div class="arrival-inner">
+            <div class="chips">
+              <div class="chip">LINE ${a.route}</div>
+              ${a.best ? '<div class="chip" style="color: rgba(6,95,70,0.95); border-color: rgba(52,199,89,0.25); background: rgba(52,199,89,0.10);">Best pick</div>' : ''}
+            </div>
+            <div class="row-main">
+              <div>
+                <div class="eta mono">${a.eta}</div>
+                <div class="eta-sub">Arrives</div>
+              </div>
+              <div class="leavein-wrap">
+                <div class="leavein-label">Leave in</div>
+                <div class="leavein mono" data-countdown>—</div>
+              </div>
+            </div>
+            <div class="row-sub">
+              <div class="subbox">
+                <div class="lbl">Departure goal</div>
+                <div class="val mono">${a.leaveAt}</div>
+              </div>
+              <div class="arrow" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M13.5 5l-1.4 1.4 4.1 4.1H4v2h12.2l-4.1 4.1L13.5 18l7-7-7-6z"/></svg></div>
+              <div class="subbox" style="text-align:right;">
+                <div class="lbl">Safety buffer</div>
+                <div class="val mono">${a.buffer}m</div>
+              </div>
+            </div>
+          </div>
+        `;
+        arrivalsEl.appendChild(div);
+      }
+    }
+
+    async function loadData(){
+      const base = (localStorage.getItem('API_BASE') || '').trim();
+      if (!base) {
+        return {
+          now: new Date(),
+          arrivals: [
+            { route: '61', eta: '00:43', leaveAt: '00:36', leaveTs: Date.now() + 6*60*1000, buffer: '6.5', best: true },
+            { route: '61', eta: '00:49', leaveAt: '00:42', leaveTs: Date.now() + 12*60*1000, buffer: '6.5', best: false },
+          ]
+        };
+      }
+
+      const url = base.replace(/\/$/, '') + '/api/next';
+      const r = await fetch(url);
+      if (!r.ok) throw new Error('Failed to fetch ' + url);
+      return await r.json();
+    }
+
+    function tick(){
+      const now = new Date();
+      nowEl.textContent = fmtNow(now);
+      document.querySelectorAll('[data-leave-ts]').forEach(card => {
+        const ts = Number(card.getAttribute('data-leave-ts'));
+        const cd = card.querySelector('[data-countdown]');
+        if (!cd || !ts) return;
+        const ms = ts - now.getTime();
+        cd.textContent = ms <= 0 ? 'Missed' : fmtDelta(ms);
+        cd.classList.toggle('missed', ms <= 0);
+        cd.classList.toggle('soon', ms > 0 && ms <= 120000);
+      });
+    }
+
+    (async () => {
+      try {
+        const data = await loadData();
+        render(data.arrivals);
+      } catch (e) {
+        document.getElementById('corsNote').innerHTML = `<b>Error:</b> ${String(e)}<br/><br/>This static page cannot call PRT directly. Provide an API base URL that supports CORS.`;
+      }
+      tick();
+      setInterval(tick, 1000);
+    })();
+  </script>
+</body>
+</html>
