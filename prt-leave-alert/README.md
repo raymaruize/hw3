@@ -1,6 +1,6 @@
-# PRT Leave Alert (CMU 15-113 HW3)
+# PRT Leave Alert / PRT Alert (CMU 15-113 HW3)
 
-This project calls a public transit API (Pittsburgh Regional Transit / Port Authority **TrueTime BusTime API**) to fetch **real-time arrival predictions** for route **61** at stop **7117** (Forbes Ave + Morewood, Carnegie Mellon). It computes **when you should leave** based on a configurable buffer/safety margin, shows a mobile-friendly live UI (with countdowns), and can send Telegram reminders / answer simple Telegram queries.
+This project calls a public transit API (Pittsburgh Regional Transit / Port Authority **TrueTime BusTime API**) to fetch **real-time arrival predictions** for route **61** at stop **7117** (Forbes Ave + Morewood, Carnegie Mellon). It computes a recommended **Leave by** time (bus ETA minus a configurable safety buffer), shows a mobile-friendly live UI with countdowns, and can send Telegram reminders / answer simple Telegram queries.
 
 ## What API is being called? (3–5 sentences)
 
@@ -8,7 +8,8 @@ This app makes HTTP **GET** requests to the PRT TrueTime **BusTime API v3** endp
 
 ## Features / Interactivity
 
-- **Responsive web UI** (mobile-first) showing the next arrivals, computed “leave at” times, and a **live countdown** (tabular numbers to avoid jitter).
+- **Responsive web UI** (mobile-first) with live countdowns (tabular numbers to avoid jitter).
+- Shows **Bus ETA** (when the bus arrives at the stop) and **Leave by** (ETA minus safety buffer).
 - **Best pick** highlighting + “Missed” handling:
   - hides buses missed “too long ago”
   - can show a recently missed bus as a lower-priority item
@@ -16,70 +17,49 @@ This app makes HTTP **GET** requests to the PRT TrueTime **BusTime API v3** endp
   - scheduled reminders (when enabled)
   - optional command: send the bot “next bus” and it replies with ETA + when to leave
 
-## Setup
+## Running locally
 
 > Important: **do not commit API keys or tokens**. Use environment variables or a local `.env` file (ignored by git).
-
-1) Create a virtualenv and install deps:
 
 ```bash
 cd prt-leave-alert
 python3 -m venv .venv
 source .venv/bin/activate
 pip install -r requirements.txt
-```
 
-2) Create your local config:
-
-```bash
 cp config.example.json config.json
-```
 
-3) Create a local `.env` (recommended) or export env vars:
-
-```bash
-# Option A: put these in prt-leave-alert/.env
-PRT_BUSTIME_API_KEY="..."
-TELEGRAM_BOT_TOKEN="..."
-
-# Option B: export in your shell
+# put secrets in prt-leave-alert/.env OR export them in your shell
 export PRT_BUSTIME_API_KEY="..."
 export TELEGRAM_BOT_TOKEN="..."
-```
 
-4) Run locally:
-
-```bash
 python app.py
 ```
 
 Open:
 - **http://127.0.0.1:5001**
 
-## How to view on your phone (same Wi‑Fi)
+## Deployment (Render)
 
-By default, `127.0.0.1` only works on the same computer. To view on your phone, run the server so it listens on your LAN address.
+This project is designed to be deployed as a Python web service.
 
-**Option 1 (quickest):** temporarily change the Flask run command to bind `0.0.0.0` (all interfaces), then restart. Once it’s running, find your laptop’s LAN IP (e.g. `192.168.1.23`) and open on your phone:
+- Start command (production):
+  - `gunicorn app:app --bind 0.0.0.0:$PORT`
+- Secrets to set as environment variables on the host:
+  - `PRT_BUSTIME_API_KEY`
+  - `TELEGRAM_BOT_TOKEN`
 
-- `http://192.168.1.23:5001`
-
-**Important:** Only do this on a trusted network (your home Wi‑Fi). Don’t expose this directly to the public internet.
-
-## Deployment / Hosting status
-
-Currently this project is running as a **local dev server** on the developer machine (Flask debug server). It is **not deployed publicly** by default.
-
-If you want others (not on your Wi‑Fi) to access it, you need to deploy it (for example: Render/Fly.io/Railway) or use a secure tunnel (ngrok/Cloudflare Tunnel). If you tell me which you prefer, I can help you set it up safely.
+Notes:
+- `config.json` is ignored by git. In cloud deploys (like Render), the app falls back to `config.example.json` if `config.json` is not present.
 
 ## Files
 
-- `app.py` – Flask UI + scheduler loop + Telegram polling
+- `app.py` – Flask UI + scheduler loop + Telegram polling + `/api/next`
 - `prt_bustime.py` – API client + prediction parsing
 - `notifier.py` – Telegram notification sender
+- `config.example.json` – example config (committed)
 - `config.json` – local settings (ignored)
 - `.env` – local secrets (ignored)
-- `config.example.json` – example config (committed)
 - `PROMPT_HISTORY.txt` – key AI prompts used
 
 ## Privacy / Security

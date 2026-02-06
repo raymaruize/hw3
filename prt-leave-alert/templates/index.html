@@ -312,6 +312,8 @@
       .subbox { display:flex; flex-direction: column; gap: 4px; }
       .subbox .lbl { font-size: 11px; letter-spacing: 0.12em; text-transform: uppercase; color: var(--muted2); }
       .subbox .val { font-size: 20px; font-weight: 750; letter-spacing: -0.01em; }
+      .subbox .val.leaveby { font-size: 26px; letter-spacing: -0.02em; }
+      @media (max-width: 380px) { .subbox .val.leaveby { font-size: 24px; } }
 
       .arrow {
         width: 24px;
@@ -519,7 +521,7 @@
                       <div class="row-sub">
                         <div class="subbox">
                           <div class="lbl">Leave by</div>
-                          <div class="val mono">{{ leave_t.strftime('%H:%M') }}</div>
+                          <div class="val mono leaveby">{{ leave_t.strftime('%H:%M') }}</div>
                         </div>
                         <div class="arrow" aria-hidden="true">
                           <svg viewBox="0 0 24 24"><path d="M13.5 5l-1.4 1.4 4.1 4.1H4v2h12.2l-4.1 4.1L13.5 18l7-7-7-6z"/></svg>
