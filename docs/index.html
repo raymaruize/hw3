@@ -309,7 +309,23 @@
       const url = base.replace(/\/$/, '') + '/api/next';
       const r = await fetch(url);
       if (!r.ok) throw new Error('Failed to fetch ' + url);
-      return await r.json();
+      const data = await r.json();
+
+      if (data && data.error) throw new Error(data.error);
+
+      // Normalize backend JSON -> UI model
+      const buf = (typeof data.buffer_minutes === 'number') ? data.buffer_minutes : 6.5;
+      const route = data.route || '61';
+      const arrivals = (data.arrivals || []).map((x, idx) => ({
+        route,
+        eta: x.bus_arrival_hhmm,
+        leaveAt: x.leave_hhmm,
+        leaveTs: Date.parse(x.leave_iso),
+        buffer: buf.toFixed(1),
+        best: idx === 0,
+      }));
+
+      return { now: new Date(data.now || Date.now()), arrivals };
     }
 
     function tick(){
