@@ -1,0 +1,6 @@
+Key prompts used:
+
+1) "Help me design a small app that calls Pittsburgh Regional Transit real-time arrivals and tells me when to leave." 
+2) "Given a stop_id and route, write Python code to call the BusTime getpredictions endpoint, parse JSON, and return the next 2 arrivals as datetimes." 
+3) "Design reminder logic that triggers at T-5min, T-1min, T-30sec, and now, while avoiding duplicate notifications." 
+4) "Create a minimal Flask UI to edit the leave buffer minutes and display next arrivals." 

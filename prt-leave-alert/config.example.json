@@ -1,0 +1,20 @@
+{
+  "agency": "PRT",
+  "rtpidatafeed": "Port Authority Bus",
+  "route": "61",
+  "from_stop_id": "7117",
+  "to_stop_id": "7100",
+  "leave_buffer_minutes": 6,
+  "extra_safety_seconds": 30,
+  "poll_seconds": 20,
+  "remind_thresholds_seconds": [300],
+  "ride_minutes_estimate": 14,
+  "quiet_hours": {"start": "23:00", "end": "08:00"},
+  "monitor": {"always_on": false, "window_minutes": 10},
+  "class_end_times": {"MW": "", "TTh": ""},
+  "schedule": [],
+  "notification": {
+    "mode": "telegram",
+    "telegram_chat_id": "YOUR_CHAT_ID_HERE"
+  }
+}

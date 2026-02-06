@@ -1,0 +1,749 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>PRT Alert</title>
+    <style>
+      :root {
+        /* Light */
+        --bg0: #f6f7fb;
+        --bg1: #f2f6ff;
+        --fg: #0b1220;
+        --muted: rgba(11,18,32,0.62);
+        --muted2: rgba(11,18,32,0.44);
+
+        --card: rgba(255,255,255,0.86);
+        --card2: rgba(255,255,255,0.74);
+        --border: rgba(11,18,32,0.10);
+        --shadow: 0 14px 38px rgba(0,0,0,0.10);
+
+        --accent: #0a84ff;
+        --accent2: #5e5ce6;
+        --ok: #34c759;
+        --warn: #ff9f0a;
+        --danger: #ff3b30;
+
+        --radius: 22px;
+        --radiusSm: 16px;
+      }
+
+      @media (prefers-color-scheme: dark) {
+        :root {
+          --bg0: #070a12;
+          --bg1: #0b1220;
+          --fg: #e5e7eb;
+          --muted: rgba(229,231,235,0.66);
+          --muted2: rgba(229,231,235,0.44);
+
+          --card: rgba(15,23,42,0.70);
+          --card2: rgba(15,23,42,0.58);
+          --border: rgba(229,231,235,0.10);
+          --shadow: 0 18px 50px rgba(0,0,0,0.32);
+
+          --accent: #0a84ff;
+          --accent2: #7c7cff;
+          --ok: #32d74b;
+          --warn: #ffd60a;
+          --danger: #ff453a;
+        }
+      }
+
+      html, body { height: 100%; }
+      body {
+        margin: 0;
+        color: var(--fg);
+        font-family: system-ui, -apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text", Segoe UI, Roboto, Arial;
+        -webkit-font-smoothing: antialiased;
+        background:
+          radial-gradient(900px 600px at 12% -20%, rgba(10,132,255,0.10), transparent 60%),
+          radial-gradient(900px 600px at 88% -10%, rgba(94,92,230,0.08), transparent 62%),
+          linear-gradient(180deg, var(--bg0), var(--bg1));
+      }
+
+      .mono { font-variant-numeric: tabular-nums; font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace; }
+
+      .container {
+        max-width: 980px;
+        margin: 0 auto;
+        padding: 16px;
+        padding-left: max(16px, env(safe-area-inset-left));
+        padding-right: max(16px, env(safe-area-inset-right));
+        padding-bottom: max(22px, env(safe-area-inset-bottom));
+      }
+
+      /* Top bar */
+      .topbar {
+        position: sticky;
+        top: 0;
+        z-index: 10;
+        margin: -16px -16px 12px -16px;
+        padding: 12px 16px;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 10px;
+        border-bottom: 1px solid var(--border);
+        background: rgba(255,255,255,0.58);
+        backdrop-filter: blur(16px);
+        -webkit-backdrop-filter: blur(16px);
+      }
+      @media (prefers-color-scheme: dark) {
+        .topbar { background: rgba(8,12,20,0.56); }
+      }
+
+      .brand {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        min-width: 0;
+      }
+      .logo {
+        width: 36px;
+        height: 36px;
+        border-radius: 999px;
+        display: grid;
+        place-items: center;
+        background: linear-gradient(180deg, rgba(10,132,255,0.95), rgba(94,92,230,0.92));
+        box-shadow: 0 10px 28px rgba(10,132,255,0.18);
+      }
+      .logo svg { width: 18px; height: 18px; fill: white; }
+
+      .title-wrap { display:flex; flex-direction: column; gap: 2px; }
+      .title {
+        font-weight: 700;
+        letter-spacing: -0.02em;
+        font-size: 16px;
+        line-height: 1.1;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
+      .subtitle { font-size: 12px; color: var(--muted); letter-spacing: 0.08em; text-transform: uppercase; }
+
+      .actions { display:flex; align-items: center; gap: 10px; }
+      .pill {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        padding: 8px 12px;
+        border-radius: 999px;
+        border: 1px solid var(--border);
+        background: rgba(255,255,255,0.42);
+        color: var(--muted);
+        font-size: 13px;
+      }
+      @media (prefers-color-scheme: dark) {
+        .pill { background: rgba(15,23,42,0.44); }
+      }
+      .dot {
+        width: 9px;
+        height: 9px;
+        border-radius: 999px;
+        background: var(--ok);
+        box-shadow: 0 0 0 4px rgba(52,199,89,0.16);
+      }
+
+      .icon-btn {
+        width: 38px;
+        height: 38px;
+        border-radius: 999px;
+        border: 0;
+        background: transparent;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        cursor: pointer;
+        padding: 0;
+        line-height: 0;
+      }
+      @media (prefers-color-scheme: dark) {
+        .icon-btn { background: rgba(15,23,42,0.40); }
+      }
+      .icon-btn svg {
+        width: 18px;
+        height: 18px;
+        fill: var(--muted);
+        display: block;
+        /* Optical centering for this specific gear glyph */
+        transform: translate(-0.6px, -0.4px);
+      }
+      .icon-btn:hover svg { fill: rgba(11,18,32,0.72); }
+      @media (prefers-color-scheme: dark) {
+        .icon-btn:hover svg { fill: rgba(229,231,235,0.78); }
+      }
+      .icon-btn:focus { outline: none; }
+      .icon-btn:focus-visible { outline: none; box-shadow: none; }
+
+      /* Layout */
+      .grid {
+        display: grid;
+        grid-template-columns: 1fr;
+        gap: 14px;
+      }
+      @media (min-width: 920px) {
+        .grid {
+          grid-template-columns: 1.1fr 0.9fr;
+          align-items: start;
+        }
+      }
+
+      .card {
+        border-radius: var(--radius);
+        border: 1px solid var(--border);
+        background: var(--card);
+        box-shadow: var(--shadow);
+        overflow: clip;
+      }
+      .card-inner { padding: 16px; }
+      @media (min-width: 520px) { .card-inner { padding: 18px; } }
+
+      .section-title {
+        margin: 4px 0 4px 0;
+        font-size: 28px;
+        font-weight: 800;
+        letter-spacing: -0.03em;
+      }
+      .section-sub { margin: 0 0 10px 0; font-size: 12px; letter-spacing: 0.10em; text-transform: uppercase; color: var(--muted); }
+
+      /* Arrival cards */
+      .arrivals { display: grid; grid-template-columns: 1fr; gap: 12px; }
+
+      .arrival {
+        border-radius: var(--radius);
+        border: 1px solid var(--border);
+        background: var(--card2);
+        box-shadow: 0 10px 30px rgba(0,0,0,0.06);
+      }
+      @media (prefers-color-scheme: dark) {
+        .arrival { box-shadow: 0 14px 40px rgba(0,0,0,0.22); }
+      }
+      .arrival.best { border-color: rgba(10,132,255,0.22); }
+
+      .arrival-inner { padding: 14px; }
+      @media (min-width: 520px) { .arrival-inner { padding: 16px; } }
+
+      .chips { display:flex; align-items:center; gap: 8px; margin-bottom: 10px; }
+      .chip {
+        font-size: 11px;
+        letter-spacing: 0.10em;
+        text-transform: uppercase;
+        padding: 7px 10px;
+        border-radius: 999px;
+        border: 1px solid var(--border);
+        color: var(--muted);
+        background: rgba(255,255,255,0.36);
+      }
+      @media (prefers-color-scheme: dark) {
+        .chip { background: rgba(15,23,42,0.38); }
+      }
+      .chip.best {
+        color: rgba(6,95,70,0.95);
+        border-color: rgba(52,199,89,0.25);
+        background: rgba(52,199,89,0.10);
+      }
+      @media (prefers-color-scheme: dark) {
+        .chip.best { color: rgba(50,215,75,0.95); background: rgba(50,215,75,0.12); }
+      }
+
+      .row-main {
+        display: grid;
+        grid-template-columns: 1fr auto;
+        gap: 10px;
+        align-items: baseline;
+      }
+
+      .eta {
+        font-size: 44px;
+        font-weight: 800;
+        letter-spacing: -0.03em;
+        line-height: 1;
+      }
+      .eta-sub { margin-top: 6px; font-size: 12px; letter-spacing: 0.10em; text-transform: uppercase; color: var(--muted); }
+
+      .leavein-wrap { text-align: right; }
+      .leavein-label { font-size: 11px; letter-spacing: 0.12em; text-transform: uppercase; color: var(--muted2); }
+      .badge {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        padding: 6px 10px;
+        border-radius: 999px;
+        border: 1px solid var(--border);
+        background: rgba(255,255,255,0.34);
+        color: var(--muted);
+        font-size: 11px;
+        letter-spacing: 0.10em;
+        text-transform: uppercase;
+      }
+      @media (prefers-color-scheme: dark) {
+        .badge { background: rgba(15,23,42,0.34); }
+      }
+      .badge.missed {
+        color: rgba(185, 28, 28, 0.95);
+        border-color: rgba(255, 59, 48, 0.25);
+        background: rgba(255, 59, 48, 0.10);
+      }
+      @media (prefers-color-scheme: dark) {
+        .badge.missed { color: rgba(255, 69, 58, 0.95); background: rgba(255, 69, 58, 0.12); }
+      }
+      .leavein {
+        font-size: 40px;
+        font-weight: 800;
+        letter-spacing: -0.03em;
+        line-height: 1;
+        color: var(--fg);
+      }
+      .leavein.soon { color: var(--warn); }
+      .leavein.missed { color: var(--danger); }
+
+      .row-sub {
+        margin-top: 14px;
+        display: grid;
+        grid-template-columns: 1fr 24px 1fr;
+        gap: 10px;
+        align-items: center;
+        padding-top: 12px;
+        border-top: 1px solid rgba(0,0,0,0.06);
+      }
+      @media (prefers-color-scheme: dark) {
+        .row-sub { border-top-color: rgba(255,255,255,0.08); }
+      }
+      .subbox { display:flex; flex-direction: column; gap: 4px; }
+      .subbox .lbl { font-size: 11px; letter-spacing: 0.12em; text-transform: uppercase; color: var(--muted2); }
+      .subbox .val { font-size: 20px; font-weight: 750; letter-spacing: -0.01em; }
+
+      .arrow {
+        width: 24px;
+        height: 24px;
+        border-radius: 999px;
+        border: 1px solid var(--border);
+        background: rgba(255,255,255,0.30);
+        display: grid;
+        place-items: center;
+      }
+      @media (prefers-color-scheme: dark) {
+        .arrow { background: rgba(15,23,42,0.34); }
+      }
+      .arrow svg { width: 14px; height: 14px; fill: var(--muted); }
+
+      .arrival.missed { opacity: 0.78; }
+
+      .note { margin-top: 12px; color: var(--muted); font-size: 13px; }
+      .danger { color: var(--danger); }
+
+      /* Config (collapsible) */
+      details { border: 0; }
+      details > summary { list-style: none; display: none; }
+      details > summary::-webkit-details-marker { display: none; }
+
+      .config-head {
+        display:flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 12px;
+        margin-bottom: 10px;
+      }
+      .config-title { font-size: 18px; font-weight: 750; letter-spacing: -0.01em; margin: 0; }
+      .small { color: var(--muted); font-size: 13px; }
+
+      .form-grid {
+        display:grid;
+        grid-template-columns: 1fr;
+        gap: 12px;
+      }
+      @media (min-width: 620px) {
+        .form-grid { grid-template-columns: 1fr 1fr; }
+        .span-2 { grid-column: span 2; }
+      }
+      .field { display:flex; flex-direction: column; gap: 7px; min-width: 0; }
+      label { font-size: 12px; color: var(--muted); }
+
+      input, select {
+        appearance: none;
+        -webkit-appearance: none;
+        padding: 12px 12px;
+        border-radius: 14px;
+        border: 1px solid var(--border);
+        background: rgba(255,255,255,0.52);
+        color: var(--fg);
+        font-size: 15px;
+        outline: none;
+      }
+      @media (prefers-color-scheme: dark) {
+        input, select { background: rgba(15,23,42,0.48); }
+      }
+      input:focus, select:focus {
+        border-color: rgba(10,132,255,0.45);
+        box-shadow: 0 0 0 4px rgba(10,132,255,0.16);
+      }
+
+      .row { display:flex; align-items:center; gap: 10px; flex-wrap: wrap; }
+      input[type="checkbox"] { width: 18px; height: 18px; border-radius: 6px; }
+
+      button {
+        padding: 12px 16px;
+        border-radius: 14px;
+        border: 1px solid rgba(0,0,0,0.08);
+        background: linear-gradient(180deg, var(--accent), var(--accent2));
+        color: white;
+        font-weight: 800;
+        font-size: 15px;
+        cursor: pointer;
+        width: 100%;
+      }
+      .save-wrap { display: flex; justify-content: stretch; }
+      @media (min-width: 620px) {
+        .save-wrap { justify-content: flex-end; }
+        .save-wrap button { width: auto; min-width: 160px; }
+      }
+
+      .meta {
+        margin-top: 12px;
+        padding-top: 12px;
+        border-top: 1px solid rgba(0,0,0,0.06);
+      }
+      @media (prefers-color-scheme: dark) {
+        .meta { border-top-color: rgba(255,255,255,0.08); }
+      }
+
+      /* Desktop: show both cards; Mobile: arrivals first */
+      .card-arrivals { order: 0; }
+      .card-config { order: 1; }
+      @media (min-width: 920px) {
+        .card-config { order: 0; }
+        .card-arrivals { order: 0; }
+        /* Desktop: always show settings, hide the hint */
+        #configHint { display: none !important; }
+      }
+
+      /* Tighten typography on very small screens */
+      @media (max-width: 380px) {
+        .eta { font-size: 40px; }
+        .leavein { font-size: 36px; }
+      }
+    </style>
+  </head>
+
+  <body>
+    <div class="container">
+      <div class="topbar">
+        <div class="brand">
+          <div class="logo" aria-hidden="true">
+            <svg viewBox="0 0 24 24" role="img" aria-label="Bus">
+              <path d="M7 4c-1.66 0-3 1.34-3 3v9.5c0 .83.67 1.5 1.5 1.5L5 20a1 1 0 0 0 1 1h1a1 1 0 0 0 1-1v-1h8v1a1 1 0 0 0 1 1h1a1 1 0 0 0 1-1l-.5-2H19.5c.83 0 1.5-.67 1.5-1.5V7c0-1.66-1.34-3-3-3H7zm0 2h11c.55 0 1 .45 1 1v2H6V7c0-.55.45-1 1-1zm-1 5h13v5.5c0 .28-.22.5-.5.5h-13c-.28 0-.5-.22-.5-.5V11zm2 6.5a1 1 0 1 1 0-2 1 1 0 0 1 0 2zm10 0a1 1 0 1 1 0-2 1 1 0 0 1 0 2z"/>
+            </svg>
+          </div>
+          <div class="title-wrap">
+            <div class="title">PRT Alert</div>
+            <div class="subtitle">Live updates</div>
+          </div>
+        </div>
+
+        <div class="actions">
+          <div class="pill"><span class="dot"></span><span class="mono" id="now">{{ now.strftime('%Y-%m-%d %H:%M:%S') }}</span></div>
+          <button class="icon-btn" id="settingsBtn" type="button" aria-label="Settings">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M19.14,12.94a7.43,7.43,0,0,0,.05-.94,7.43,7.43,0,0,0-.05-.94l2.11-1.65a.5.5,0,0,0,.12-.63l-2-3.46a.5.5,0,0,0-.6-.22l-2.49,1a7.28,7.28,0,0,0-1.63-.94l-.38-2.65A.5.5,0,0,0,13.78,1H10.22a.5.5,0,0,0-.49.42L9.35,4.07a7.28,7.28,0,0,0-1.63.94l-2.49-1a.5.5,0,0,0-.6.22l-2,3.46a.5.5,0,0,0,.12.63L4.86,11.06a7.43,7.43,0,0,0-.05.94,7.43,7.43,0,0,0,.05.94L2.75,14.59a.5.5,0,0,0-.12.63l2,3.46a.5.5,0,0,0,.6.22l2.49-1a7.28,7.28,0,0,0,1.63.94l.38,2.65a.5.5,0,0,0,.49.42h3.56a.5.5,0,0,0,.49-.42l.38-2.65a7.28,7.28,0,0,0,1.63-.94l2.49,1a.5.5,0,0,0,.6-.22l2-3.46a.5.5,0,0,0-.12-.63ZM12,15.5A3.5,3.5,0,1,1,15.5,12,3.5,3.5,0,0,1,12,15.5Z"/></svg>
+          </button>
+        </div>
+      </div>
+
+      <div class="grid">
+        <!-- Arrivals first on mobile -->
+        <div class="card card-arrivals">
+          <div class="card-inner">
+            <div class="section-title">Next Arrivals</div>
+            <div class="section-sub">Updated real-time</div>
+
+            {% if info.error %}
+              <div class="note danger">{{ info.error }}</div>
+            {% elif not info.arrivals %}
+              <div class="note">No upcoming buses found.</div>
+            {% else %}
+              {% set buf_min = (cfg.leave_buffer_minutes|int) + ((cfg.extra_safety_seconds|int) / 60.0) %}
+              <div class="arrivals">
+                {% for a in info.arrivals %}
+                  {% set leave_t = info.leave_times[loop.index0] %}
+                  <div class="arrival {% if loop.index0 == 0 %}best{% endif %}" data-arrival="{{ a.isoformat() }}" data-leave="{{ leave_t.isoformat() }}">
+                    <div class="arrival-inner">
+                      <div class="chips">
+                        <div class="chip">LINE {{ cfg.route }}</div>
+                        {% if loop.index0 == 0 %}<div class="chip best">Best pick</div>{% endif %}
+                      </div>
+
+                      <div class="row-main">
+                        <div>
+                          <div class="eta mono">{{ a.strftime('%H:%M') }}</div>
+                          <div class="eta-sub">Arrives</div>
+                        </div>
+                        <div class="leavein-wrap">
+                          <div class="leavein-label">Leave in</div>
+                          <div class="leavein mono" data-countdown>—</div>
+                          <div style="margin-top:10px; display:none; justify-content:flex-end;" data-missed-badge>
+                            <span class="badge missed">Missed</span>
+                          </div>
+                        </div>
+                      </div>
+
+                      <div class="row-sub">
+                        <div class="subbox">
+                          <div class="lbl">Departure goal</div>
+                          <div class="val mono">{{ leave_t.strftime('%H:%M') }}</div>
+                        </div>
+                        <div class="arrow" aria-hidden="true">
+                          <svg viewBox="0 0 24 24"><path d="M13.5 5l-1.4 1.4 4.1 4.1H4v2h12.2l-4.1 4.1L13.5 18l7-7-7-6z"/></svg>
+                        </div>
+                        <div class="subbox" style="text-align:right;">
+                          <div class="lbl">Safety buffer</div>
+                          <div class="val mono">{{ '%.1f' % buf_min }}m</div>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                {% endfor %}
+              </div>
+
+              <div class="note">Countdown updates live. If it looks stale, refresh.</div>
+            {% endif %}
+          </div>
+        </div>
+
+        <!-- Settings / Config -->
+        <div class="card card-config" id="configCard">
+          <div class="card-inner">
+            <details id="configDetails">
+              <summary></summary>
+              <div class="config-head">
+                <h2 class="config-title">Settings</h2>
+                <div class="small">Config for reminders + schedule</div>
+              </div>
+
+              <form method="post" action="/update">
+                <div class="form-grid">
+                  <div class="field">
+                    <label>Leave buffer (minutes)</label>
+                    <input class="mono" name="leave_buffer_minutes" type="number" min="0" value="{{ cfg.leave_buffer_minutes }}" />
+                  </div>
+                  <div class="field">
+                    <label>Extra safety (seconds)</label>
+                    <input class="mono" name="extra_safety_seconds" type="number" min="0" value="{{ cfg.extra_safety_seconds }}" />
+                  </div>
+                  <div class="field">
+                    <label>Poll interval (seconds)</label>
+                    <input class="mono" name="poll_seconds" type="number" min="10" value="{{ cfg.poll_seconds }}" />
+                  </div>
+                  <div class="field">
+                    <label>Telegram chat id</label>
+                    <input class="mono" name="telegram_chat_id" type="text" value="{{ cfg.notification.telegram_chat_id if cfg.notification and cfg.notification.telegram_chat_id else '' }}" />
+                  </div>
+
+                  <div class="field span-2" style="margin-top:2px;">
+                    <div class="small" style="font-weight:700; color: var(--fg);">Class end times</div>
+                  </div>
+                  <div class="field">
+                    <label>Mon/Wed end time</label>
+                    <select class="mono" name="mw_end_time">
+                      {% set mw = (cfg.class_end_times.MW if cfg.class_end_times and cfg.class_end_times.MW else '') %}
+                      <option value="" {% if mw == '' %}selected{% endif %}>-- select --</option>
+                      <option value="15:50" {% if mw == '15:50' %}selected{% endif %}>15:50</option>
+                      <option value="17:50" {% if mw == '17:50' %}selected{% endif %}>17:50</option>
+                    </select>
+                  </div>
+                  <div class="field">
+                    <label>Tue/Thu end time</label>
+                    <select class="mono" name="tth_end_time">
+                      {% set tth = (cfg.class_end_times.TTh if cfg.class_end_times and cfg.class_end_times.TTh else '') %}
+                      <option value="" {% if tth == '' %}selected{% endif %}>-- select --</option>
+                      <option value="15:50" {% if tth == '15:50' %}selected{% endif %}>15:50</option>
+                      <option value="17:50" {% if tth == '17:50' %}selected{% endif %}>17:50</option>
+                    </select>
+                  </div>
+
+                  <div class="field span-2" style="margin-top:2px;">
+                    <div class="row">
+                      <input name="always_on" type="checkbox" {% if cfg.monitor and cfg.monitor.always_on %}checked{% endif %} />
+                      <label style="margin:0;">Always monitor (send reminders anytime)</label>
+                    </div>
+                  </div>
+
+                  <div class="field">
+                    <label>Monitor window after class end (minutes)</label>
+                    <input class="mono" name="window_minutes" type="number" min="5" value="{{ cfg.monitor.window_minutes if cfg.monitor and cfg.monitor.window_minutes else 10 }}" />
+                  </div>
+
+                  <div class="field span-2 save-wrap" style="align-self:end;">
+                    <button type="submit">Save</button>
+                  </div>
+                </div>
+              </form>
+
+              <div class="meta small">Stop: <span class="mono">{{ cfg.from_stop_id }}</span> (Forbes + Morewood) • Route prefix: <span class="mono">{{ cfg.route }}</span> (matches 61A/61B/61C/61D)</div>
+            </details>
+
+            <!-- When collapsed, show a lightweight hint -->
+            <div id="configHint" class="small" style="display:none;">Tap the gear to open settings.</div>
+          </div>
+        </div>
+      </div>
+
+      <script>
+        // Live "Now" clock + countdowns (client-side only)
+        const nowEl = document.getElementById('now');
+        const settingsBtn = document.getElementById('settingsBtn');
+        const details = document.getElementById('configDetails');
+        const hint = document.getElementById('configHint');
+
+        function pad(n){ return String(n).padStart(2,'0'); }
+
+        function fmtDelta(ms){
+          const s = Math.round(ms/1000);
+          const sign = s < 0 ? '-' : '';
+          const abs = Math.abs(s);
+          if (abs < 60) return `${sign}${abs}s`;
+          const m = Math.floor(abs/60);
+          const ss = abs % 60;
+          return `${sign}${m}m${pad(ss)}s`;
+        }
+
+        function setLeaveInStyles(el, ms){
+          if (!el) return;
+          el.classList.remove('missed', 'soon');
+          if (ms <= 0) el.classList.add('missed');
+          else if (ms <= 120000) el.classList.add('soon');
+        }
+
+        function tick(){
+          const now = new Date();
+          if (nowEl){
+            const yyyy = now.getFullYear();
+            const mm = pad(now.getMonth()+1);
+            const dd = pad(now.getDate());
+            const hh = pad(now.getHours());
+            const mi = pad(now.getMinutes());
+            const ss = pad(now.getSeconds());
+            nowEl.textContent = `${yyyy}-${mm}-${dd} ${hh}:${mi}:${ss}`;
+          }
+
+          // Update countdown + classify cards
+          const cards = Array.from(document.querySelectorAll('.arrival[data-leave]'));
+          const classified = [];
+
+          for (const card of cards){
+            const leaveIso = card.getAttribute('data-leave');
+            const leave = new Date(leaveIso);
+            const cd = card.querySelector('[data-countdown]');
+            const badgeWrap = card.querySelector('[data-missed-badge]');
+            if (!cd || Number.isNaN(leave.getTime())) continue;
+
+            const ms = leave.getTime() - now.getTime();
+
+            // If missed, show a badge (and keep countdown calm)
+            if (badgeWrap) badgeWrap.style.display = (ms <= 0) ? 'flex' : 'none';
+
+            // Keep countdown readable; if missed, show "Missed" instead of a negative timer
+            if (ms <= 0) {
+              cd.textContent = 'Missed';
+            } else {
+              cd.textContent = fmtDelta(ms);
+            }
+            setLeaveInStyles(cd, ms);
+            card.classList.toggle('missed', ms <= 0);
+
+            classified.push({ card, ms, leaveTs: leave.getTime() });
+          }
+
+          // Sorting / filtering rules (show up to 3):
+          // 1) Best pick (soonest upcoming) first
+          // 2) Next upcoming second
+          // 3) If there is a recently missed (<=3 min late), show it as third
+          // 4) Old missed (>3 min late) hidden
+          const RECENT_MISSED_MS = 3 * 60 * 1000;
+
+          const upcoming = classified.filter(x => x.ms > 0).sort((a,b) => a.leaveTs - b.leaveTs);
+          const recentMissed = classified.filter(x => x.ms <= 0 && x.ms >= -RECENT_MISSED_MS).sort((a,b) => b.leaveTs - a.leaveTs);
+          const oldMissed = classified.filter(x => x.ms < -RECENT_MISSED_MS);
+
+          // Hide old missed entirely
+          for (const x of oldMissed) x.card.style.display = 'none';
+
+          // Determine which cards to show
+          let show = upcoming.slice(0, 3);
+          if (upcoming.length >= 2 && recentMissed.length > 0) {
+            show = upcoming.slice(0, 2).concat([recentMissed[0]]);
+          } else if (upcoming.length < 3 && recentMissed.length > 0) {
+            // Only include a missed one if we have room
+            show = upcoming.slice(0, 3);
+            if (show.length < 3) show.push(recentMissed[0]);
+          }
+
+          // Hide everything first
+          for (const x of classified) {
+            if (x.card.style.display !== 'none') x.card.style.display = 'none';
+          }
+
+          // Show selected in correct order + assign Best pick chip to the first visible upcoming
+          // Reset best chip
+          for (const x of classified) x.card.classList.remove('best');
+
+          const listEl = document.querySelector('.arrivals');
+          if (listEl) {
+            for (const item of show) {
+              item.card.style.display = '';
+              listEl.appendChild(item.card); // move to enforce order
+            }
+          } else {
+            // fallback
+            for (const item of show) item.card.style.display = '';
+          }
+
+          // Apply "best" styling to the first upcoming shown
+          const best = show.find(x => x.ms > 0) || null;
+          if (best) best.card.classList.add('best');
+        }
+
+        // Settings toggle
+        function isDesktop(){ return window.matchMedia('(min-width: 920px)').matches; }
+
+        function syncHint(){
+          if (!details || !hint) return;
+          // Desktop always expanded; hide hint
+          if (isDesktop()) {
+            details.open = true;
+            hint.style.display = 'none';
+            return;
+          }
+          hint.style.display = details.open ? 'none' : 'block';
+        }
+
+        if (settingsBtn && details){
+          settingsBtn.addEventListener('click', () => {
+            // On desktop, settings is already visible
+            if (isDesktop()) {
+              document.getElementById('configCard')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+              return;
+            }
+            details.open = !details.open;
+            if (details.open) document.getElementById('configCard')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+            syncHint();
+          });
+
+          window.addEventListener('resize', syncHint);
+          syncHint();
+        }
+
+        // Refresh data when returning to the tab (so arrivals are fresh)
+        const LOADED_AT = Date.now();
+        document.addEventListener('visibilitychange', () => {
+          if (document.visibilityState === 'visible') {
+            const age = Date.now() - LOADED_AT;
+            // If you come back after ~60s, reload to fetch fresh arrivals from the server.
+            if (age > 60000) location.reload();
+          }
+        });
+
+        tick();
+        setInterval(tick, 1000);
+      </script>
+    </div>
+  </body>
+</html>
