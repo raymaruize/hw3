@@ -195,7 +195,7 @@
         </div>
         <div class="title-wrap">
           <div class="title">PRT Alert</div>
-          <div class="subtitle">Static demo</div>
+          <div class="subtitle" id="modeSub">Live updates</div>
         </div>
       </div>
       <div class="pill"><span class="dot"></span><span class="mono" id="now">—</span></div>
@@ -208,17 +208,17 @@
           <div class="section-sub">Updated real-time</div>
 
           <div class="warnbox" id="corsNote">
-            This is a <b>GitHub Pages static demo</b>. PRT TrueTime does <b>not</b> send CORS headers, so a browser page cannot call it directly.
-            To show live data here, you need a small backend/proxy endpoint (for example your existing Flask app, deployed somewhere) and set an API base URL below.
+            This site is hosted on <b>GitHub Pages</b> (static hosting). PRT TrueTime does <b>not</b> send CORS headers, so this page cannot call PRT directly.
+            To show live data, we call your deployed backend: <span class="mono">{API_BASE}/api/next</span>.
           </div>
 
-          <div style="height: 12px"></div>
+          <div style="height: 12px" id="baseSpacer"></div>
 
-          <div class="row">
-            <input id="apiBase" placeholder="Optional: https://your-backend.example.com" />
+          <div class="row" id="baseRow">
+            <input id="apiBase" placeholder="API base URL (e.g. https://hw3-wccq.onrender.com)" />
             <button id="saveBase">Use</button>
           </div>
-          <div class="hint">If provided, the page will call <span class="mono">{API_BASE}/api/next</span> and render real arrivals. Otherwise it uses mock data.</div>
+          <div class="hint" id="baseHint">Tip: once set, this field will hide and the page will use live data automatically.</div>
 
           <div style="height: 16px"></div>
 
@@ -233,6 +233,10 @@
     const nowEl = document.getElementById('now');
     const arrivalsEl = document.getElementById('arrivals');
     const apiBaseInput = document.getElementById('apiBase');
+    const baseRow = document.getElementById('baseRow');
+    const baseHint = document.getElementById('baseHint');
+    const corsNote = document.getElementById('corsNote');
+    const modeSub = document.getElementById('modeSub');
 
     const storedBase = localStorage.getItem('API_BASE') || '';
     apiBaseInput.value = storedBase;
@@ -297,6 +301,7 @@
     async function loadData(){
       const base = (localStorage.getItem('API_BASE') || '').trim();
       if (!base) {
+        if (modeSub) modeSub.textContent = 'Mock data';
         return {
           now: new Date(),
           arrivals: [
@@ -324,6 +329,12 @@
         buffer: buf.toFixed(1),
         best: idx === 0,
       }));
+
+      // If live data is working, hide the base URL controls to reduce clutter.
+      if (modeSub) modeSub.textContent = 'Live updates';
+      if (baseRow) baseRow.style.display = 'none';
+      if (baseHint) baseHint.style.display = 'none';
+      if (corsNote) corsNote.style.display = 'none';
 
       return { now: new Date(data.now || Date.now()), arrivals };
     }
