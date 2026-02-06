@@ -328,6 +328,17 @@ def index():
             int(cfg.get("leave_buffer_minutes", 6)),
             int(cfg.get("extra_safety_seconds", 30)),
         )
+
+        if arrivals:
+            state["last_seen_arrival"] = arrivals[0]
+
+    except PRTBusTimeError as e:
+        # If there are no predictions right now, show the "No service" state (not an error).
+        if "no arrival times" in str(e).lower():
+            info["arrivals"] = []
+            info["leave_times"] = []
+        else:
+            info["error"] = str(e)
     except Exception as e:
         info["error"] = str(e)
 
@@ -373,6 +384,20 @@ def api_next():
         }
 
         resp = jsonify(out)
+    except PRTBusTimeError as e:
+        # Normalize "no arrival times" into a valid empty response for clients.
+        if "no arrival times" in str(e).lower():
+            buf_min = float(cfg.get("leave_buffer_minutes", 6)) + float(cfg.get("extra_safety_seconds", 30)) / 60.0
+            resp = jsonify({
+                "now": now.isoformat(),
+                "stop_id": cfg.get("from_stop_id"),
+                "route": cfg.get("route"),
+                "buffer_minutes": buf_min,
+                "last_seen_bus_arrival_hhmm": state.get("last_seen_arrival").strftime("%H:%M") if state.get("last_seen_arrival") else None,
+                "arrivals": [],
+            })
+        else:
+            resp = jsonify({"error": str(e)})
     except Exception as e:
         resp = jsonify({"error": str(e)})
 

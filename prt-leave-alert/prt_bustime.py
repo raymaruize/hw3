@@ -50,8 +50,25 @@ def get_predictions(
     resp = data.get("bustime-response", {})
 
     if "error" in resp:
-        # Usually: invalid key, invalid stop, etc.
-        raise PRTBusTimeError(str(resp["error"]))
+        # BusTime sometimes returns an "error" field even for non-fatal states,
+        # e.g. when there are simply no arrival predictions at the moment.
+        err = resp.get("error")
+
+        # Normalize to a list of error dicts if possible
+        items = []
+        if isinstance(err, list):
+            items = err
+        elif isinstance(err, dict):
+            items = [err]
+        else:
+            items = []
+
+        msgs = " ".join(str(i.get("msg", "")) for i in items if isinstance(i, dict)).lower()
+        if "no arrival times" in msgs:
+            return []
+
+        # Otherwise treat as fatal (invalid key, invalid stop, etc.)
+        raise PRTBusTimeError(str(err))
 
     preds = resp.get("prd", [])
     if isinstance(preds, dict):
