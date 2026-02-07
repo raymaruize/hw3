@@ -406,6 +406,14 @@ def api_next():
     return resp
 
 
+@app.route("/health", methods=["GET"])
+def health():
+    """Simple health check endpoint for hosting providers (e.g., Render)."""
+    resp = jsonify({"ok": True})
+    resp.headers["Cache-Control"] = "no-store"
+    return resp
+
+
 @app.route("/update", methods=["POST"])
 def update():
     cfg = load_config()

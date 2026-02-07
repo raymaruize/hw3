@@ -39,6 +39,8 @@ Open:
 
 ## Deployment
 
+**Live (Render):** https://hw3-wccq.onrender.com
+
 The project can be deployed as a Python web service (e.g., Render) using:
 
 - Start command:
@@ -46,6 +48,9 @@ The project can be deployed as a Python web service (e.g., Render) using:
 - Environment variables:
   - `PRT_BUSTIME_API_KEY`
   - `TELEGRAM_BOT_TOKEN`
+
+Notes:
+- The Render *service name* can be changed (mine is currently **catchthebusorfreeze**), but the default `*.onrender.com` subdomain is not always editable after creation. If you want a prettier URL, use a **custom domain** or create a new Render service with the desired subdomain.
 
 ## Privacy / Security
 

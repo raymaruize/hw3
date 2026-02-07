@@ -41,6 +41,8 @@ Open:
 
 ## Deployment (Render)
 
+**Live URL:** https://hw3-wccq.onrender.com
+
 This project is designed to be deployed as a Python web service.
 
 - Start command (production):
