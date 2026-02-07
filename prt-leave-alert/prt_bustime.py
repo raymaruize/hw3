@@ -64,7 +64,8 @@ def get_predictions(
             items = []
 
         msgs = " ".join(str(i.get("msg", "")) for i in items if isinstance(i, dict)).lower()
-        if "no arrival times" in msgs:
+        # Treat "no arrivals" states as empty (not fatal).
+        if ("no arrival times" in msgs) or ("no service scheduled" in msgs):
             return []
 
         # Otherwise treat as fatal (invalid key, invalid stop, etc.)
