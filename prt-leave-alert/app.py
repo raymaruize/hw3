@@ -334,7 +334,8 @@ def index():
 
     except PRTBusTimeError as e:
         # If there are no predictions right now, show the "No service" state (not an error).
-        if "no arrival times" in str(e).lower():
+        msg = str(e).lower()
+        if ("no arrival times" in msg) or ("no service scheduled" in msg):
             info["arrivals"] = []
             info["leave_times"] = []
         else:
@@ -385,8 +386,9 @@ def api_next():
 
         resp = jsonify(out)
     except PRTBusTimeError as e:
-        # Normalize "no arrival times" into a valid empty response for clients.
-        if "no arrival times" in str(e).lower():
+        # Normalize "no arrivals" states into a valid empty response for clients.
+        msg = str(e).lower()
+        if ("no arrival times" in msg) or ("no service scheduled" in msg):
             buf_min = float(cfg.get("leave_buffer_minutes", 6)) + float(cfg.get("extra_safety_seconds", 30)) / 60.0
             resp = jsonify({
                 "now": now.isoformat(),
