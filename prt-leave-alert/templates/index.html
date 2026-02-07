@@ -497,10 +497,12 @@
               <div class="arrivals">
                 {% for a in info.arrivals %}
                   {% set leave_t = info.leave_times[loop.index0] %}
+                  {% set pr = (info.preds[loop.index0] if info.preds and (info.preds|length) > loop.index0 else None) %}
+                  {% set rt = (pr.rt if pr and pr.rt else cfg.route) %}
                   <div class="arrival {% if loop.index0 == 0 %}best{% endif %}" data-arrival="{{ a.isoformat() }}" data-leave="{{ leave_t.isoformat() }}">
                     <div class="arrival-inner">
                       <div class="chips">
-                        <div class="chip">LINE {{ cfg.route }}</div>
+                        <div class="chip">LINE {{ rt }}</div>
                         {% if loop.index0 == 0 %}<div class="chip best">Best pick</div>{% endif %}
                       </div>
 

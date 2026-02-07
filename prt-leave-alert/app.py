@@ -8,7 +8,7 @@ from flask import Flask, render_template, request, redirect, url_for, jsonify
 from apscheduler.schedulers.background import BackgroundScheduler
 from dotenv import load_dotenv
 
-from prt_bustime import next_arrivals, PRTBusTimeError
+from prt_bustime import next_predictions, next_arrivals, PRTBusTimeError
 from notifier import send_telegram
 
 APP_DIR = Path(__file__).parent
@@ -141,20 +141,22 @@ def build_next_bus_reply(cfg: dict, now: dt.datetime | None = None) -> str:
     ride_min = int(cfg.get("ride_minutes_estimate", 14))
 
     try:
-        arrivals = next_arrivals(stop_id=stop_id, route=route, now=now, rtpi_datafeed=rtpidatafeed)
+        preds = next_predictions(stop_id=stop_id, route=route, now=now, rtpi_datafeed=rtpidatafeed)
     except PRTBusTimeError as e:
         return f"Error fetching arrivals: {e}"
 
-    if not arrivals:
+    if not preds:
         last = state.get("last_seen_arrival")
         if last:
             return f"No upcoming buses found right now. Last seen bus arrival was {last.strftime('%H:%M')}."
         return "No upcoming buses found for this stop right now."
 
-    arrivals = arrivals[:2]
+    preds = preds[:2]
+    arrivals = [p["arrival"] for p in preds]
     leave_times = compute_leave_times(arrivals, leave_buffer, extra_safety)
 
     a = arrivals[0]
+    rt0 = preds[0].get("rt") or (route or "")
     leave_at = leave_times[0]
     secs_to_leave = (leave_at - now).total_seconds()
 
@@ -166,7 +168,7 @@ def build_next_bus_reply(cfg: dict, now: dt.datetime | None = None) -> str:
     total_to_dest = (eta_dest - now).total_seconds()
 
     lines = [
-        f"Next bus (route {route})",
+        f"Next bus ({rt0})",
         f"Arrives at stop {stop_id}: {eta_stop}",
         f"Leave in: {leave_in} (leave at {leave_clock})",
         f"Est. ride time: {ride_min} min",
@@ -175,8 +177,9 @@ def build_next_bus_reply(cfg: dict, now: dt.datetime | None = None) -> str:
 
     if len(arrivals) > 1:
         wait = (arrivals[1] - a).total_seconds()
+        rt1 = preds[1].get("rt") or (route or "")
         if wait > 0:
-            lines.append(f"If you miss it, next is ~{fmt_delta(wait)} later ({arrivals[1].strftime('%H:%M')}).")
+            lines.append(f"If you miss it, next is ~{fmt_delta(wait)} later ({arrivals[1].strftime('%H:%M')}, {rt1}).")
 
     return "\n".join(lines)
 
@@ -201,11 +204,13 @@ def maybe_send_reminders():
     now = dt.datetime.now()
 
     try:
-        arrivals = next_arrivals(stop_id=stop_id, route=route, now=now, rtpi_datafeed=rtpidatafeed)
+        preds = next_predictions(stop_id=stop_id, route=route, now=now, rtpi_datafeed=rtpidatafeed)
     except PRTBusTimeError:
         return
-    if not arrivals:
+    if not preds:
         return
+
+    arrivals = [p["arrival"] for p in preds]
 
     # remember last seen arrival time (best-effort)
     try:
@@ -213,15 +218,18 @@ def maybe_send_reminders():
     except Exception:
         pass
 
+    preds = preds[:2]
     arrivals = arrivals[:2]
     leave_times = compute_leave_times(arrivals, leave_buffer, extra_safety)
 
     # Choose the soonest bus as primary
     primary_arrival = arrivals[0]
+    primary_rt = preds[0].get("rt") or (route or "")
     primary_leave = leave_times[0]
 
     # Secondary bus (if miss primary)
     secondary_arrival = arrivals[1] if len(arrivals) > 1 else None
+    secondary_rt = preds[1].get("rt") if len(preds) > 1 else None
 
     for t in thresholds:
         # Trigger when we are within ~poll interval of crossing the threshold
@@ -233,19 +241,20 @@ def maybe_send_reminders():
                 continue
 
             if t > 0:
-                headline = f"Reminder: leave in {fmt_delta(secs_to_leave)} to catch 61"
+                headline = f"Reminder: leave in {fmt_delta(secs_to_leave)} to catch {primary_rt}"
             else:
-                headline = "Leave now to catch 61"
+                headline = f"Leave now to catch {primary_rt}"
 
             miss_wait = ""
             if secondary_arrival:
                 wait = (secondary_arrival - primary_arrival).total_seconds()
                 if wait > 0:
-                    miss_wait = f"\nIf you miss this one, next is ~{fmt_delta(wait)} later."
+                    tail = f" ({secondary_rt})" if secondary_rt else ""
+                    miss_wait = f"\nIf you miss this one, next is ~{fmt_delta(wait)} later{tail}."
 
             msg = (
                 f"{headline}\n"
-                f"Stop 7117 (Forbes + Morewood)\n"
+                f"Stop {stop_id}\n"
                 f"Bus ETA: {primary_arrival.strftime('%H:%M')}\n"
                 f"Your leave buffer: {leave_buffer} min (+{extra_safety}s)\n"
                 f"Target leave time: {primary_leave.strftime('%H:%M:%S')}"
@@ -319,9 +328,11 @@ def index():
     cfg = load_config()
     now = dt.datetime.now()
 
-    info = {"error": None, "arrivals": [], "leave_times": []}
+    info = {"error": None, "arrivals": [], "leave_times": [], "preds": []}
     try:
-        arrivals = next_arrivals(cfg["from_stop_id"], cfg.get("route"), now=now, rtpi_datafeed=cfg.get("rtpidatafeed"))[:3]
+        preds = next_predictions(cfg["from_stop_id"], cfg.get("route"), now=now, rtpi_datafeed=cfg.get("rtpidatafeed"))[:3]
+        arrivals = [p["arrival"] for p in preds]
+        info["preds"] = preds
         info["arrivals"] = arrivals
         info["leave_times"] = compute_leave_times(
             arrivals,
@@ -348,12 +359,14 @@ def index():
 
 @app.route("/api/next", methods=["GET"])
 def api_next():
-    """CORS-friendly JSON endpoint for a static frontend (e.g., GitHub Pages)."""
+    """CORS-friendly JSON endpoint for clients (optional)."""
     cfg = load_config()
     now = dt.datetime.now()
 
     try:
-        arrivals = next_arrivals(cfg["from_stop_id"], cfg.get("route"), now=now, rtpi_datafeed=cfg.get("rtpidatafeed"))[:3]
+        preds = next_predictions(cfg["from_stop_id"], cfg.get("route"), now=now, rtpi_datafeed=cfg.get("rtpidatafeed"))[:3]
+        arrivals = [p["arrival"] for p in preds]
+
         # remember last seen arrival time (best-effort)
         if arrivals:
             state["last_seen_arrival"] = arrivals[0]
@@ -369,12 +382,13 @@ def api_next():
         out = {
             "now": now.isoformat(),
             "stop_id": cfg.get("from_stop_id"),
-            "route": cfg.get("route"),
+            "route_prefix": cfg.get("route"),
             "buffer_minutes": buf_min,
             "last_seen_bus_arrival_hhmm": state.get("last_seen_arrival").strftime("%H:%M") if state.get("last_seen_arrival") else None,
             "arrivals": [
                 {
                     "index": i + 1,
+                    "rt": (preds[i].get("rt") if i < len(preds) else None),
                     "bus_arrival_iso": a.isoformat(),
                     "leave_iso": lt.isoformat(),
                     "bus_arrival_hhmm": a.strftime("%H:%M"),
@@ -393,7 +407,7 @@ def api_next():
             resp = jsonify({
                 "now": now.isoformat(),
                 "stop_id": cfg.get("from_stop_id"),
-                "route": cfg.get("route"),
+                "route_prefix": cfg.get("route"),
                 "buffer_minutes": buf_min,
                 "last_seen_bus_arrival_hhmm": state.get("last_seen_arrival").strftime("%H:%M") if state.get("last_seen_arrival") else None,
                 "arrivals": [],

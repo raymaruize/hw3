@@ -82,13 +82,44 @@ def _parse_prdtm(prdtm: str) -> dt.datetime:
     return dt.datetime.strptime(prdtm, "%Y%m%d %H:%M")
 
 
-def next_arrivals(
+def _prediction_arrival_dt(p: dict, now: dt.datetime) -> dt.datetime | None:
+    """Best-effort predicted arrival time as a datetime."""
+    # Prefer absolute predicted time if provided
+    prdtm = p.get("prdtm")
+    if prdtm:
+        try:
+            return _parse_prdtm(prdtm)
+        except Exception:
+            pass
+
+    # Fallback: countdown minutes
+    cdn = p.get("prdctdn")
+    if cdn is None:
+        return None
+
+    if isinstance(cdn, str) and cdn.lower() in {"due", "dly"}:
+        # "due" = arriving now; "dly" = delayed (no numeric)
+        if cdn.lower() == "due":
+            return now
+        return None
+
+    try:
+        minutes = int(cdn)
+    except Exception:
+        return None
+    return now + dt.timedelta(minutes=minutes)
+
+
+def next_predictions(
     stop_id: str,
     route: str | None = None,
     now: dt.datetime | None = None,
     rtpi_datafeed: str | None = None,
-) -> list[dt.datetime]:
-    """Return the next arrival datetimes (local time) sorted ascending.
+) -> list[dict]:
+    """Return upcoming predictions with route codes preserved.
+
+    Each item looks like:
+      {"rt": "61A", "arrival": datetime, "raw": <original prediction dict>}
 
     If `route` is provided, we treat it as a prefix (e.g. "61" matches 61A/61B/61C/61D).
     """
@@ -96,34 +127,39 @@ def next_arrivals(
     preds = get_predictions(stop_id=stop_id, route=route, rtpi_datafeed=rtpi_datafeed)
 
     if route:
-        rp = route.upper()
+        rp = str(route).upper()
         preds = [p for p in preds if str(p.get("rt", "")).upper().startswith(rp)]
 
-    arrivals: list[dt.datetime] = []
+    out: list[dict] = []
     for p in preds:
-        # Prefer absolute predicted time if provided
-        prdtm = p.get("prdtm")
-        if prdtm:
-            try:
-                arrivals.append(_parse_prdtm(prdtm))
-                continue
-            except Exception:
-                pass
+        arrival = _prediction_arrival_dt(p, now)
+        if not arrival:
+            continue
+        out.append({
+            "rt": str(p.get("rt") or "").strip(),
+            "arrival": arrival,
+            "raw": p,
+        })
 
-        # Fallback: countdown minutes
-        cdn = p.get("prdctdn")
-        if cdn is None:
+    # De-dupe by (rt, arrival)
+    seen: set[tuple[str, str]] = set()
+    uniq: list[dict] = []
+    for item in sorted(out, key=lambda x: (x["arrival"], x.get("rt", ""))):
+        key = (item.get("rt", ""), item["arrival"].isoformat())
+        if key in seen:
             continue
-        if isinstance(cdn, str) and cdn.lower() in {"due", "dly"}:
-            # "due" = arriving now; "dly" = delayed (no numeric)
-            if cdn.lower() == "due":
-                arrivals.append(now)
-            continue
-        try:
-            minutes = int(cdn)
-        except Exception:
-            continue
-        arrivals.append(now + dt.timedelta(minutes=minutes))
+        seen.add(key)
+        uniq.append(item)
 
-    arrivals = sorted(set(arrivals))
-    return arrivals
+    return uniq
+
+
+def next_arrivals(
+    stop_id: str,
+    route: str | None = None,
+    now: dt.datetime | None = None,
+    rtpi_datafeed: str | None = None,
+) -> list[dt.datetime]:
+    """Backward-compatible: just datetimes, sorted."""
+    items = next_predictions(stop_id=stop_id, route=route, now=now, rtpi_datafeed=rtpi_datafeed)
+    return [i["arrival"] for i in items]

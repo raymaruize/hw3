@@ -1,10 +1,10 @@
 # PRT Leave Alert / PRT Alert (CMU 15-113 HW3)
 
-This project calls a public transit API (Pittsburgh Regional Transit / Port Authority **TrueTime BusTime API**) to fetch **real-time arrival predictions** for route **61** at stop **7117** (Forbes Ave + Morewood, Carnegie Mellon). It computes a recommended **Leave by** time (bus ETA minus a configurable safety buffer), shows a mobile-friendly live UI with countdowns, and can send Telegram reminders / answer simple Telegram queries.
+This project calls a public transit API (Pittsburgh Regional Transit / Port Authority **TrueTime BusTime API**) to fetch **real-time arrival predictions** for a route *family* (**61A/61B/61C/61D**) at stop **7117** (Forbes Ave + Morewood, Carnegie Mellon). It computes a recommended **Leave by** time (bus ETA minus a configurable safety buffer), shows a mobile-friendly live UI with countdowns, and can send Telegram reminders / answer simple Telegram queries.
 
 ## What API is being called? (3–5 sentences)
 
-This app makes HTTP **GET** requests to the PRT TrueTime **BusTime API v3** endpoint `bustime/api/v3/getpredictions`. The request includes an API key (`key`) plus parameters like the stop id (`stpid=7117`), a required feed name for PRT’s multi-feed system (`rtpidatafeed=Port Authority Bus`), and `format=json`. The API returns JSON containing a list of prediction objects (route, stop, and predicted arrival time / countdown). For route **61**, the app fetches all predictions for the stop and filters client-side by the route prefix **61** to match 61A/61B/61C/61D.
+This app makes HTTP **GET** requests to the PRT TrueTime **BusTime API v3** endpoint `bustime/api/v3/getpredictions`. The request includes an API key (`key`) plus parameters like the stop id (`stpid=7117`), a required feed name for PRT’s multi-feed system (`rtpidatafeed=Port Authority Bus`), and `format=json`. The API returns JSON containing a list of prediction objects, including the route code `rt` (e.g., **61A**, **61B**, **61C**, **61D**) plus predicted arrival time fields (`prdtm` / `prdctdn`). The app fetches all predictions for the stop and filters client-side by the route prefix **61**, while still displaying/sending reminders using each prediction’s specific `rt`.
 
 ## Features / Interactivity
 
@@ -56,7 +56,7 @@ Notes:
 
 ## Files
 
-- `app.py` – Flask UI + scheduler loop + Telegram polling + `/api/next`
+- `app.py` – Flask UI + scheduler loop + Telegram polling + `/api/next` (includes `rt` per arrival)
 - `prt_bustime.py` – API client + prediction parsing
 - `notifier.py` – Telegram notification sender
 - `config.example.json` – example config (committed)
