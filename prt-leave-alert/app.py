@@ -131,7 +131,23 @@ def in_monitor_window(now: dt.datetime, cfg: dict) -> bool:
     return False
 
 
+def _fmt_miss_or_in(seconds: float) -> str:
+    """Telegram-friendly countdown label."""
+    if seconds >= 0:
+        return fmt_delta(seconds)
+    # Make it obvious we are late, not just "ago"
+    return f"Missed by {fmt_delta(-seconds)}"
+
+
 def build_next_bus_reply(cfg: dict, now: dt.datetime | None = None) -> str:
+    """Build a 3-row reply:
+
+    - upcoming #1
+    - upcoming #2
+    - recently missed (<= 3 min) if available
+
+    If missed is not within 3 minutes, we show only 2 rows.
+    """
     now = now or dt.datetime.now(tz=APP_TZ)
 
     stop_id = cfg["from_stop_id"]
@@ -154,35 +170,50 @@ def build_next_bus_reply(cfg: dict, now: dt.datetime | None = None) -> str:
             return f"No upcoming buses found right now. Last seen bus arrival was {last.strftime('%H:%M')}."
         return "No upcoming buses found for this stop right now."
 
-    preds = preds[:2]
-    arrivals = [p["arrival"] for p in preds]
-    leave_times = compute_leave_times(arrivals, leave_buffer, extra_safety)
+    # Convert to items with leave times
+    items = []
+    for p in preds:
+        a = p["arrival"]
+        leave_at = a - dt.timedelta(minutes=leave_buffer, seconds=extra_safety)
+        items.append({
+            "rt": p.get("rt") or (route or ""),
+            "arrival": a,
+            "leave_at": leave_at,
+            "raw": p.get("raw") or {},
+        })
 
-    a = arrivals[0]
-    rt0 = preds[0].get("rt") or (route or "")
-    leave_at = leave_times[0]
-    secs_to_leave = (leave_at - now).total_seconds()
+    # Classify by leave_at (matches the web UI behavior)
+    recent_missed_sec = 3 * 60
+    upcoming = [x for x in items if (x["leave_at"] - now).total_seconds() > 0]
+    missed_recent = [x for x in items if 0 >= (x["leave_at"] - now).total_seconds() >= -recent_missed_sec]
 
-    eta_stop = a.strftime("%H:%M")
-    leave_clock = leave_at.strftime("%H:%M:%S")
-    leave_in = fmt_delta(secs_to_leave)
+    upcoming = sorted(upcoming, key=lambda x: x["leave_at"])[:2]
+    missed = sorted(missed_recent, key=lambda x: x["leave_at"], reverse=True)[:1]
 
-    eta_dest = (a + dt.timedelta(minutes=ride_min))
-    total_to_dest = (eta_dest - now).total_seconds()
+    show = upcoming + missed
 
     lines = [
-        f"Next bus ({rt0})",
-        f"Arrives at stop {stop_id}: {eta_stop}",
-        f"Leave in: {leave_in} (leave at {leave_clock})",
-        f"Est. ride time: {ride_min} min",
-        f"Est. arrive destination: {eta_dest.strftime('%H:%M')} (in {fmt_delta(total_to_dest)})",
+        f"Stop {stop_id} • routes {route}*",
+        f"Buffer: {leave_buffer}m + {extra_safety}s  (ride est. {ride_min}m)",
+        "",
     ]
 
-    if len(arrivals) > 1:
-        wait = (arrivals[1] - a).total_seconds()
-        rt1 = preds[1].get("rt") or (route or "")
-        if wait > 0:
-            lines.append(f"If you miss it, next is ~{fmt_delta(wait)} later ({arrivals[1].strftime('%H:%M')}, {rt1}).")
+    for i, x in enumerate(show, start=1):
+        secs_to_leave = (x["leave_at"] - now).total_seconds()
+        eta_dest = x["arrival"] + dt.timedelta(minutes=ride_min)
+        cdn = (x.get("raw") or {}).get("prdctdn")
+        cdn_txt = f" • cdn {cdn}m" if (cdn is not None and str(cdn).isdigit()) else ""
+
+        lines += [
+            f"{i}) {x['rt']}",
+            f"   Bus ETA: {x['arrival'].strftime('%H:%M')}  (dest ~{eta_dest.strftime('%H:%M')}){cdn_txt}",
+            f"   Leave: {_fmt_miss_or_in(secs_to_leave)}  @ {x['leave_at'].strftime('%H:%M:%S')}",
+            "",
+        ]
+
+    # Trim trailing blank line
+    while lines and lines[-1] == "":
+        lines.pop()
 
     return "\n".join(lines)
 
