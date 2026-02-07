@@ -1,8 +1,12 @@
 import os
 import datetime as dt
+from zoneinfo import ZoneInfo
 import requests
 
 BUSTIME_BASE = "https://truetime.portauthority.org/bustime/api/v3"
+
+# Render/Linux hosts often default to UTC. PRT times are local Pittsburgh time.
+PRT_TZ = ZoneInfo(os.getenv("PRT_TIMEZONE", "America/New_York"))
 
 class PRTBusTimeError(RuntimeError):
     pass
@@ -78,8 +82,9 @@ def get_predictions(
 
 
 def _parse_prdtm(prdtm: str) -> dt.datetime:
-    # Format is typically: "YYYYMMDD HH:MM"
-    return dt.datetime.strptime(prdtm, "%Y%m%d %H:%M")
+    # Format is typically: "YYYYMMDD HH:MM" in PRT local time.
+    naive = dt.datetime.strptime(prdtm, "%Y%m%d %H:%M")
+    return naive.replace(tzinfo=PRT_TZ)
 
 
 def _prediction_arrival_dt(p: dict, now: dt.datetime) -> dt.datetime | None:
@@ -123,7 +128,7 @@ def next_predictions(
 
     If `route` is provided, we treat it as a prefix (e.g. "61" matches 61A/61B/61C/61D).
     """
-    now = now or dt.datetime.now()
+    now = now or dt.datetime.now(tz=PRT_TZ)
     preds = get_predictions(stop_id=stop_id, route=route, rtpi_datafeed=rtpi_datafeed)
 
     if route:

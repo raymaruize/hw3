@@ -1,6 +1,7 @@
 import json
 import os
 import datetime as dt
+from zoneinfo import ZoneInfo
 from pathlib import Path
 
 import requests
@@ -18,6 +19,8 @@ CONFIG_EXAMPLE_PATH = APP_DIR / "config.example.json"
 load_dotenv()  # loads .env if present (not committed)
 
 app = Flask(__name__)
+
+APP_TZ = ZoneInfo(os.getenv("PRT_TIMEZONE", "America/New_York"))
 
 state = {
     "last_sent": {},  # key -> timestamp
@@ -129,7 +132,7 @@ def in_monitor_window(now: dt.datetime, cfg: dict) -> bool:
 
 
 def build_next_bus_reply(cfg: dict, now: dt.datetime | None = None) -> str:
-    now = now or dt.datetime.now()
+    now = now or dt.datetime.now(tz=APP_TZ)
 
     stop_id = cfg["from_stop_id"]
     route = cfg.get("route")
@@ -186,7 +189,7 @@ def build_next_bus_reply(cfg: dict, now: dt.datetime | None = None) -> str:
 
 def maybe_send_reminders():
     cfg = load_config()
-    if not in_monitor_window(dt.datetime.now(), cfg):
+    if not in_monitor_window(dt.datetime.now(tz=APP_TZ), cfg):
         return
 
     stop_id = cfg["from_stop_id"]
@@ -201,7 +204,7 @@ def maybe_send_reminders():
     if mode != "telegram" or not chat_id:
         return
 
-    now = dt.datetime.now()
+    now = dt.datetime.now(tz=APP_TZ)
 
     try:
         preds = next_predictions(stop_id=stop_id, route=route, now=now, rtpi_datafeed=rtpidatafeed)
@@ -326,7 +329,7 @@ def poll_telegram_and_reply():
 @app.route("/", methods=["GET"])
 def index():
     cfg = load_config()
-    now = dt.datetime.now()
+    now = dt.datetime.now(tz=APP_TZ)
 
     info = {"error": None, "arrivals": [], "leave_times": [], "preds": []}
     try:
@@ -361,7 +364,7 @@ def index():
 def api_next():
     """CORS-friendly JSON endpoint for clients (optional)."""
     cfg = load_config()
-    now = dt.datetime.now()
+    now = dt.datetime.now(tz=APP_TZ)
 
     try:
         preds = next_predictions(cfg["from_stop_id"], cfg.get("route"), now=now, rtpi_datafeed=cfg.get("rtpidatafeed"))[:3]
