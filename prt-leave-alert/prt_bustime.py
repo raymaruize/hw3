@@ -88,8 +88,33 @@ def _parse_prdtm(prdtm: str) -> dt.datetime:
 
 
 def _prediction_arrival_dt(p: dict, now: dt.datetime) -> dt.datetime | None:
-    """Best-effort predicted arrival time as a datetime."""
-    # Prefer absolute predicted time if provided
+    """Best-effort predicted arrival time as a datetime.
+
+    BusTime sometimes provides both:
+      - prdtm: an absolute timestamp (minute precision)
+      - prdctdn: a countdown in minutes (relative)
+
+    To better match rider-facing apps (which often emphasize the countdown), we prefer
+    a numeric countdown when available; otherwise we fall back to prdtm.
+    """
+
+    cdn = p.get("prdctdn")
+    if isinstance(cdn, str) and cdn.lower() in {"due", "dly"}:
+        # "due" = arriving now; "dly" = delayed (no numeric)
+        if cdn.lower() == "due":
+            return now
+        # "dly" has no numeric time
+        cdn = None
+
+    # If countdown is numeric, prefer it (seconds preserved from `now`)
+    try:
+        if cdn is not None:
+            minutes = int(cdn)
+            return now + dt.timedelta(minutes=minutes)
+    except Exception:
+        pass
+
+    # Fallback: absolute predicted time if provided
     prdtm = p.get("prdtm")
     if prdtm:
         try:
@@ -97,22 +122,7 @@ def _prediction_arrival_dt(p: dict, now: dt.datetime) -> dt.datetime | None:
         except Exception:
             pass
 
-    # Fallback: countdown minutes
-    cdn = p.get("prdctdn")
-    if cdn is None:
-        return None
-
-    if isinstance(cdn, str) and cdn.lower() in {"due", "dly"}:
-        # "due" = arriving now; "dly" = delayed (no numeric)
-        if cdn.lower() == "due":
-            return now
-        return None
-
-    try:
-        minutes = int(cdn)
-    except Exception:
-        return None
-    return now + dt.timedelta(minutes=minutes)
+    return None
 
 
 def next_predictions(
