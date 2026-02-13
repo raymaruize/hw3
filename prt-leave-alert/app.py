@@ -446,8 +446,44 @@ def poll_telegram_and_reply():
                 continue
 
             norm = text.lower().strip()
+
             if norm in {"next bus", "nextbus", "/nextbus", "/next", "next"}:
                 reply = build_next_bus_reply(cfg)
+                try:
+                    send_telegram(chat_id=str(chat_id), text=reply)
+                except Exception:
+                    pass
+
+            if norm in {"/digest", "digest"}:
+                # Return today's scheduled digest immediately (for testing)
+                now_local = dt.datetime.now(tz=APP_TZ)
+                weekday = now_local.weekday()  # Mon=0
+
+                # Defaults
+                anchor_hhmm = "15:40" if weekday in (0, 2) else "17:40"
+
+                # If config provides schedule, prefer matching today's group
+                try:
+                    sched = cfg.get("telegram_digest_schedule")
+                    if isinstance(sched, list):
+                        # Determine today's day name
+                        days = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
+                        today = days[weekday]
+                        # pick first matching item
+                        for item in sched:
+                            if today in (item.get("days") or []):
+                                anchor_hhmm = str(item.get("anchor_time") or anchor_hhmm)
+                                break
+                except Exception:
+                    pass
+
+                try:
+                    t = _parse_hhmm(anchor_hhmm)
+                    anchor = dt.datetime.combine(now_local.date(), t, tzinfo=APP_TZ)
+                except Exception:
+                    anchor = now_local
+
+                reply = build_digest_reply(cfg, anchor=anchor, now=now_local)
                 try:
                     send_telegram(chat_id=str(chat_id), text=reply)
                 except Exception:
