@@ -25,10 +25,10 @@
       "anchor_time": "15:40"
     },
     {
-      "name": "TTh_1750",
+      "name": "TTh_1730",
       "days": ["Tue", "Thu"],
-      "time": "17:50",
-      "anchor_time": "15:40"
+      "time": "17:30",
+      "anchor_time": "17:40"
     }
   ]
 }
