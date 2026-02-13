@@ -208,8 +208,8 @@ def build_next_bus_reply(cfg: dict, now: dt.datetime | None = None) -> str:
 
         lines += [
             f"{i}) {x['rt']}",
-            f"   Bus ETA: {x['arrival'].strftime('%H:%M')}  (dest ~{eta_dest.strftime('%H:%M')}){cdn_txt}",
-            f"   Leave: {_fmt_miss_or_in(secs_to_leave)}  @ {x['leave_at'].strftime('%H:%M:%S')}",
+            f"   Bus ETA / 到站: {x['arrival'].strftime('%H:%M')}  (dest~ / 目的地~ {eta_dest.strftime('%H:%M')}){cdn_txt}",
+            f"   Leave by / 出门: {x['leave_at'].strftime('%H:%M')}  ({_fmt_miss_or_in(secs_to_leave)})",
             "",
         ]
 
@@ -218,6 +218,12 @@ def build_next_bus_reply(cfg: dict, now: dt.datetime | None = None) -> str:
         lines.pop()
 
     return "\n".join(lines)
+
+
+def _h(s: str) -> str:
+    """HTML-escape helper for Telegram parse_mode=HTML."""
+    import html
+    return html.escape(str(s), quote=False)
 
 
 def build_digest_reply(cfg: dict, anchor: dt.datetime, now: dt.datetime | None = None) -> str:
@@ -259,27 +265,30 @@ def build_digest_reply(cfg: dict, anchor: dt.datetime, now: dt.datetime | None =
 
     items = sorted(items, key=lambda x: x["arrival"])[:3]
 
+    # HTML message (Telegram parse_mode=HTML)
     lines = [
-        f"Scheduled reminder • starting {effective_anchor.strftime('%H:%M')} (requested {anchor.strftime('%H:%M')})",
-        f"Stop {stop_id} • routes {route}*",
-        f"Buffer: {leave_buffer}m + {extra_safety}s  (ride est. {ride_min}m)",
+        f"<b>Scheduled reminder / 定时提醒</b>",
+        f"<b>Start / 起算:</b> {_h(effective_anchor.strftime('%H:%M'))}  <b>(Requested / 需求:</b> {_h(anchor.strftime('%H:%M'))})",
+        f"<b>Stop / 站点:</b> {_h(stop_id)}",
+        f"<b>Routes / 线路:</b> {_h(route)}*",
+        f"<b>Buffer / 缓冲:</b> {_h(str(leave_buffer))}m + {_h(str(extra_safety))}s  <b>Ride est. / 车程估计:</b> {_h(str(ride_min))}m",
         "",
     ]
 
     if not items:
-        lines.append("No upcoming buses found after the requested start time.")
+        lines.append("<b>Status / 状态:</b> No upcoming buses after start time / 起算后暂无班次")
         return "\n".join(lines)
 
     for i, x in enumerate(items, start=1):
         eta_dest = x["arrival"] + dt.timedelta(minutes=ride_min)
         cdn = (x.get("raw") or {}).get("prdctdn")
-        cdn_txt = f" • cdn {cdn}m" if (cdn is not None and str(cdn).isdigit()) else ""
+        cdn_txt = f"  <b>CDN / 倒计时:</b> {_h(cdn)}m" if (cdn is not None and str(cdn).isdigit()) else ""
         secs_to_leave = (x["leave_at"] - now).total_seconds()
 
         lines += [
-            f"{i}) {x['rt']}",
-            f"   Bus ETA: {x['arrival'].strftime('%H:%M')}  (dest ~{eta_dest.strftime('%H:%M')}){cdn_txt}",
-            f"   Leave: {_fmt_miss_or_in(secs_to_leave)}  @ {x['leave_at'].strftime('%H:%M:%S')}",
+            f"<b>{i}) Route / 线路:</b> {_h(x['rt'])}",
+            f"<b>Bus ETA / 到站:</b> {_h(x['arrival'].strftime('%H:%M'))}  <b>Dest~ / 到达目的地~:</b> {_h(eta_dest.strftime('%H:%M'))}{cdn_txt}",
+            f"<b>Leave by / 出门:</b> {_h(x['leave_at'].strftime('%H:%M'))}  <b>Status / 状态:</b> {_h(_fmt_miss_or_in(secs_to_leave))}",
             "",
         ]
 
@@ -357,15 +366,15 @@ def maybe_send_reminders():
                     miss_wait = f"\nIf you miss this one, next is ~{fmt_delta(wait)} later{tail}."
 
             msg = (
-                f"{headline}\n"
-                f"Stop {stop_id}\n"
-                f"Bus ETA: {primary_arrival.strftime('%H:%M')}\n"
-                f"Your leave buffer: {leave_buffer} min (+{extra_safety}s)\n"
-                f"Target leave time: {primary_leave.strftime('%H:%M:%S')}"
+                f"<b>{headline}</b>\n"
+                f"<b>Stop / 站点:</b> {stop_id}\n"
+                f"<b>Bus ETA / 到站:</b> {primary_arrival.strftime('%H:%M')}\n"
+                f"<b>Buffer / 缓冲:</b> {leave_buffer}m (+{extra_safety}s)\n"
+                f"<b>Leave by / 出门:</b> {primary_leave.strftime('%H:%M')}"
                 f"{miss_wait}"
             )
             try:
-                send_telegram(chat_id=chat_id, text=msg)
+                send_telegram(chat_id=chat_id, text=msg, parse_mode="HTML")
                 state["last_sent"][key] = now
             except Exception:
                 pass
@@ -398,7 +407,7 @@ def send_scheduled_digest(name: str, anchor_hhmm: str = "15:40") -> None:
         return
 
     try:
-        send_telegram(chat_id=chat_id, text=msg)
+        send_telegram(chat_id=chat_id, text=msg, parse_mode="HTML")
         state["last_sent"][key] = now
     except Exception:
         pass
@@ -450,7 +459,7 @@ def poll_telegram_and_reply():
             if norm in {"next bus", "nextbus", "/nextbus", "/next", "next"}:
                 reply = build_next_bus_reply(cfg)
                 try:
-                    send_telegram(chat_id=str(chat_id), text=reply)
+                    send_telegram(chat_id=str(chat_id), text=reply, parse_mode=None)
                 except Exception:
                     pass
 
@@ -485,7 +494,7 @@ def poll_telegram_and_reply():
 
                 reply = build_digest_reply(cfg, anchor=anchor, now=now_local)
                 try:
-                    send_telegram(chat_id=str(chat_id), text=reply)
+                    send_telegram(chat_id=str(chat_id), text=reply, parse_mode="HTML")
                 except Exception:
                     pass
 
