@@ -16,5 +16,19 @@
   "notification": {
     "mode": "telegram",
     "telegram_chat_id": "YOUR_CHAT_ID_HERE"
-  }
+  },
+  "telegram_digest_schedule": [
+    {
+      "name": "MW_1530",
+      "days": ["Mon", "Wed"],
+      "time": "15:30",
+      "anchor_time": "15:40"
+    },
+    {
+      "name": "TTh_1750",
+      "days": ["Tue", "Thu"],
+      "time": "17:50",
+      "anchor_time": "15:40"
+    }
+  ]
 }

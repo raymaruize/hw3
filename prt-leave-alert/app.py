@@ -7,6 +7,7 @@ from pathlib import Path
 import requests
 from flask import Flask, render_template, request, redirect, url_for, jsonify
 from apscheduler.schedulers.background import BackgroundScheduler
+from apscheduler.triggers.cron import CronTrigger
 from dotenv import load_dotenv
 
 from prt_bustime import next_predictions, next_arrivals, PRTBusTimeError
@@ -26,6 +27,7 @@ state = {
     "last_sent": {},  # key -> timestamp
     "telegram_update_offset": None,  # used by getUpdates polling
     "last_seen_arrival": None,  # datetime of last observed arrival (best-effort)
+    "scheduler_started": False,
 }
 
 
@@ -140,7 +142,7 @@ def _fmt_miss_or_in(seconds: float) -> str:
 
 
 def build_next_bus_reply(cfg: dict, now: dt.datetime | None = None) -> str:
-    """Build a 3-row reply:
+    """Build a 3-row reply based on 'leave_at' relative to `now`.
 
     - upcoming #1
     - upcoming #2
@@ -215,6 +217,74 @@ def build_next_bus_reply(cfg: dict, now: dt.datetime | None = None) -> str:
     while lines and lines[-1] == "":
         lines.pop()
 
+    return "\n".join(lines)
+
+
+def build_digest_reply(cfg: dict, anchor: dt.datetime, now: dt.datetime | None = None) -> str:
+    """Build a scheduled 'digest' message.
+
+    Requirement: "从 15:40 开始" -> interpret as: list upcoming buses whose *bus arrival*
+    is at/after `anchor` (in local time), plus corresponding leave time.
+
+    If `anchor` is already in the past, we use max(anchor, now) so the digest is still useful.
+    """
+    now = now or dt.datetime.now(tz=APP_TZ)
+    effective_anchor = max(anchor, now)
+
+    stop_id = cfg["from_stop_id"]
+    route = cfg.get("route")
+    rtpidatafeed = cfg.get("rtpidatafeed")
+    leave_buffer = int(cfg.get("leave_buffer_minutes", 6))
+    extra_safety = int(cfg.get("extra_safety_seconds", 30))
+    ride_min = int(cfg.get("ride_minutes_estimate", 14))
+
+    try:
+        preds = next_predictions(stop_id=stop_id, route=route, now=now, rtpi_datafeed=rtpidatafeed)
+    except PRTBusTimeError as e:
+        return f"Error fetching arrivals: {e}"
+
+    # Filter by bus arrival relative to anchor
+    items = []
+    for p in preds:
+        a = p["arrival"]
+        if a < effective_anchor:
+            continue
+        leave_at = a - dt.timedelta(minutes=leave_buffer, seconds=extra_safety)
+        items.append({
+            "rt": p.get("rt") or (route or ""),
+            "arrival": a,
+            "leave_at": leave_at,
+            "raw": p.get("raw") or {},
+        })
+
+    items = sorted(items, key=lambda x: x["arrival"])[:3]
+
+    lines = [
+        f"Scheduled reminder • starting {effective_anchor.strftime('%H:%M')} (requested {anchor.strftime('%H:%M')})",
+        f"Stop {stop_id} • routes {route}*",
+        f"Buffer: {leave_buffer}m + {extra_safety}s  (ride est. {ride_min}m)",
+        "",
+    ]
+
+    if not items:
+        lines.append("No upcoming buses found after the requested start time.")
+        return "\n".join(lines)
+
+    for i, x in enumerate(items, start=1):
+        eta_dest = x["arrival"] + dt.timedelta(minutes=ride_min)
+        cdn = (x.get("raw") or {}).get("prdctdn")
+        cdn_txt = f" • cdn {cdn}m" if (cdn is not None and str(cdn).isdigit()) else ""
+        secs_to_leave = (x["leave_at"] - now).total_seconds()
+
+        lines += [
+            f"{i}) {x['rt']}",
+            f"   Bus ETA: {x['arrival'].strftime('%H:%M')}  (dest ~{eta_dest.strftime('%H:%M')}){cdn_txt}",
+            f"   Leave: {_fmt_miss_or_in(secs_to_leave)}  @ {x['leave_at'].strftime('%H:%M:%S')}",
+            "",
+        ]
+
+    while lines and lines[-1] == "":
+        lines.pop()
     return "\n".join(lines)
 
 
@@ -299,6 +369,39 @@ def maybe_send_reminders():
                 state["last_sent"][key] = now
             except Exception:
                 pass
+
+
+def send_scheduled_digest(name: str, anchor_hhmm: str = "15:40") -> None:
+    """Send a scheduled digest message to the configured Telegram chat."""
+    cfg = load_config()
+
+    mode = cfg.get("notification", {}).get("mode", "telegram")
+    chat_id = cfg.get("notification", {}).get("telegram_chat_id")
+    if mode != "telegram" or not chat_id:
+        return
+
+    now = dt.datetime.now(tz=APP_TZ)
+
+    # Build anchor time for *today* in local time
+    try:
+        t = _parse_hhmm(anchor_hhmm)
+        anchor = dt.datetime.combine(now.date(), t, tzinfo=APP_TZ)
+    except Exception:
+        anchor = now
+
+    msg = build_digest_reply(cfg, anchor=anchor, now=now)
+
+    # De-dupe (avoid duplicate sends if scheduler restarts)
+    key = f"digest@{name}@{now.strftime('%Y-%m-%d')}"
+    last = state["last_sent"].get(key)
+    if last and (now - last).total_seconds() < 6 * 3600:
+        return
+
+    try:
+        send_telegram(chat_id=chat_id, text=msg)
+        state["last_sent"][key] = now
+    except Exception:
+        pass
 
 
 def poll_telegram_and_reply():
@@ -495,13 +598,73 @@ def update():
     return redirect(url_for("index"))
 
 
-if __name__ == "__main__":
+def _try_acquire_lock(lock_path: str = "/tmp/prt_leave_alert_scheduler.lock") -> bool:
+    """Best-effort inter-process lock to avoid duplicate schedulers under gunicorn."""
+    try:
+        import fcntl  # type: ignore
+
+        fd = os.open(lock_path, os.O_CREAT | os.O_RDWR, 0o644)
+        fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        # keep fd open for lifetime of process
+        state["_lock_fd"] = fd  # type: ignore
+        return True
+    except Exception:
+        return False
+
+
+def start_scheduler() -> None:
+    """Start APScheduler jobs (safe to call multiple times)."""
+    if state.get("scheduler_started"):
+        return
+
+    # Allow disabling via env (useful for testing)
+    if os.getenv("RUN_SCHEDULER", "1") not in {"1", "true", "True", "yes", "YES"}:
+        return
+
+    # Avoid duplicates when multiple workers/threads exist
+    if not _try_acquire_lock():
+        return
+
     cfg = load_config()
-    sched = BackgroundScheduler(daemon=True)
+
+    sched = BackgroundScheduler(daemon=True, timezone=APP_TZ)
+
+    # Existing polling-based reminders
     sched.add_job(maybe_send_reminders, "interval", seconds=int(cfg.get("poll_seconds", 20)))
 
-    # Poll Telegram for simple queries ("next bus")
+    # Telegram command polling
     sched.add_job(poll_telegram_and_reply, "interval", seconds=3)
 
+    # New: scheduled digest reminders (HW4-style feature)
+    digest = cfg.get("telegram_digest_schedule")
+    if isinstance(digest, list) and digest:
+        for item in digest:
+            try:
+                name = str(item.get("name") or "digest")
+                days = item.get("days") or []
+                hhmm = str(item.get("time") or "")
+                anchor_hhmm = str(item.get("anchor_time") or "15:40")
+
+                # days like ["Mon","Wed"]
+                day_map = {"Mon": "mon", "Tue": "tue", "Wed": "wed", "Thu": "thu", "Fri": "fri", "Sat": "sat", "Sun": "sun"}
+                dows = [day_map[d] for d in days if d in day_map]
+                if not dows:
+                    continue
+
+                t = _parse_hhmm(hhmm)
+                trigger = CronTrigger(day_of_week=",".join(dows), hour=t.hour, minute=t.minute, timezone=APP_TZ)
+                sched.add_job(send_scheduled_digest, trigger=trigger, args=[name, anchor_hhmm])
+            except Exception:
+                continue
+
     sched.start()
+    state["scheduler_started"] = True
+
+
+# Start scheduler when imported (gunicorn / Render)
+start_scheduler()
+
+
+if __name__ == "__main__":
+    # Local dev
     app.run(debug=True, port=5001)
