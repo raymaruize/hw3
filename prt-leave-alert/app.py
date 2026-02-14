@@ -226,16 +226,15 @@ def _h(s: str) -> str:
     return html.escape(str(s), quote=False)
 
 
-def build_digest_reply(cfg: dict, anchor: dt.datetime, now: dt.datetime | None = None) -> str:
-    """Build a scheduled 'digest' message.
+def build_digest_reply(cfg: dict, now: dt.datetime | None = None, title: str = "Digest / 车次汇总") -> str:
+    """Build a digest message like the web UI: next 3 upcoming buses from *now*.
 
-    Requirement: "从 15:40 开始" -> interpret as: list upcoming buses whose *bus arrival*
-    is at/after `anchor` (in local time), plus corresponding leave time.
+    - Scheduled digests: called at the configured times (MW 15:30, TTh 17:30)
+    - On-demand: via Telegram command /digest
 
-    If `anchor` is already in the past, we use max(anchor, now) so the digest is still useful.
+    Shows the next 3 *upcoming* trips (by bus arrival), with Bus ETA and Leave-by time.
     """
     now = now or dt.datetime.now(tz=APP_TZ)
-    effective_anchor = max(anchor, now)
 
     stop_id = cfg["from_stop_id"]
     route = cfg.get("route")
@@ -247,13 +246,12 @@ def build_digest_reply(cfg: dict, anchor: dt.datetime, now: dt.datetime | None =
     try:
         preds = next_predictions(stop_id=stop_id, route=route, now=now, rtpi_datafeed=rtpidatafeed)
     except PRTBusTimeError as e:
-        return f"Error fetching arrivals: {e}"
+        return f"<b>Error / 错误:</b> {_h(e)}"
 
-    # Filter by bus arrival relative to anchor
     items = []
     for p in preds:
         a = p["arrival"]
-        if a < effective_anchor:
+        if a < now:
             continue
         leave_at = a - dt.timedelta(minutes=leave_buffer, seconds=extra_safety)
         items.append({
@@ -265,10 +263,9 @@ def build_digest_reply(cfg: dict, anchor: dt.datetime, now: dt.datetime | None =
 
     items = sorted(items, key=lambda x: x["arrival"])[:3]
 
-    # HTML message (Telegram parse_mode=HTML)
     lines = [
-        f"<b>Scheduled reminder / 定时提醒</b>",
-        f"<b>Start / 起算:</b> {_h(effective_anchor.strftime('%H:%M'))}  <b>(Requested / 需求:</b> {_h(anchor.strftime('%H:%M'))})",
+        f"<b>{_h(title)}</b>",
+        f"<b>Now / 当前:</b> {_h(now.strftime('%H:%M'))}",
         f"<b>Stop / 站点:</b> {_h(stop_id)}",
         f"<b>Routes / 线路:</b> {_h(route)}*",
         f"<b>Buffer / 缓冲:</b> {_h(str(leave_buffer))}m + {_h(str(extra_safety))}s  <b>Ride est. / 车程估计:</b> {_h(str(ride_min))}m",
@@ -276,19 +273,21 @@ def build_digest_reply(cfg: dict, anchor: dt.datetime, now: dt.datetime | None =
     ]
 
     if not items:
-        lines.append("<b>Status / 状态:</b> No upcoming buses after start time / 起算后暂无班次")
+        lines.append("<b>Status / 状态:</b> No upcoming buses right now / 当前暂无班次")
         return "\n".join(lines)
 
     for i, x in enumerate(items, start=1):
         eta_dest = x["arrival"] + dt.timedelta(minutes=ride_min)
         cdn = (x.get("raw") or {}).get("prdctdn")
         cdn_txt = f"  <b>CDN / 倒计时:</b> {_h(cdn)}m" if (cdn is not None and str(cdn).isdigit()) else ""
+
         secs_to_leave = (x["leave_at"] - now).total_seconds()
+        leave_in = fmt_delta(secs_to_leave) if secs_to_leave >= 0 else f"-{fmt_delta(-secs_to_leave)}"
 
         lines += [
             f"<b>{i}) Route / 线路:</b> {_h(x['rt'])}",
-            f"<b>Bus ETA / 到站:</b> {_h(x['arrival'].strftime('%H:%M'))}  <b>Dest~ / 到达目的地~:</b> {_h(eta_dest.strftime('%H:%M'))}{cdn_txt}",
-            f"<b>Leave by / 出门:</b> {_h(x['leave_at'].strftime('%H:%M'))}  <b>Status / 状态:</b> {_h(_fmt_miss_or_in(secs_to_leave))}",
+            f"<b>Bus ETA / 到站:</b> {_h(x['arrival'].strftime('%H:%M'))}  <b>Dest~ / 到达~:</b> {_h(eta_dest.strftime('%H:%M'))}{cdn_txt}",
+            f"<b>Leave by / 出门:</b> {_h(x['leave_at'].strftime('%H:%M'))}  <b>Leave in / 还剩:</b> {_h(leave_in)}",
             "",
         ]
 
@@ -380,8 +379,8 @@ def maybe_send_reminders():
                 pass
 
 
-def send_scheduled_digest(name: str, anchor_hhmm: str = "15:40") -> None:
-    """Send a scheduled digest message to the configured Telegram chat."""
+def send_scheduled_digest(name: str) -> None:
+    """Send a scheduled digest message (next 3 buses from now)."""
     cfg = load_config()
 
     mode = cfg.get("notification", {}).get("mode", "telegram")
@@ -390,15 +389,7 @@ def send_scheduled_digest(name: str, anchor_hhmm: str = "15:40") -> None:
         return
 
     now = dt.datetime.now(tz=APP_TZ)
-
-    # Build anchor time for *today* in local time
-    try:
-        t = _parse_hhmm(anchor_hhmm)
-        anchor = dt.datetime.combine(now.date(), t, tzinfo=APP_TZ)
-    except Exception:
-        anchor = now
-
-    msg = build_digest_reply(cfg, anchor=anchor, now=now)
+    msg = build_digest_reply(cfg, now=now, title="Scheduled digest / 定时汇总")
 
     # De-dupe (avoid duplicate sends if scheduler restarts)
     key = f"digest@{name}@{now.strftime('%Y-%m-%d')}"
@@ -464,35 +455,9 @@ def poll_telegram_and_reply():
                     pass
 
             if norm in {"/digest", "digest"}:
-                # Return today's scheduled digest immediately (for testing)
+                # On-demand digest: next 3 buses from *now* (like the web UI)
                 now_local = dt.datetime.now(tz=APP_TZ)
-                weekday = now_local.weekday()  # Mon=0
-
-                # Defaults
-                anchor_hhmm = "15:40" if weekday in (0, 2) else "17:40"
-
-                # If config provides schedule, prefer matching today's group
-                try:
-                    sched = cfg.get("telegram_digest_schedule")
-                    if isinstance(sched, list):
-                        # Determine today's day name
-                        days = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
-                        today = days[weekday]
-                        # pick first matching item
-                        for item in sched:
-                            if today in (item.get("days") or []):
-                                anchor_hhmm = str(item.get("anchor_time") or anchor_hhmm)
-                                break
-                except Exception:
-                    pass
-
-                try:
-                    t = _parse_hhmm(anchor_hhmm)
-                    anchor = dt.datetime.combine(now_local.date(), t, tzinfo=APP_TZ)
-                except Exception:
-                    anchor = now_local
-
-                reply = build_digest_reply(cfg, anchor=anchor, now=now_local)
+                reply = build_digest_reply(cfg, now=now_local, title="On-demand digest / 即时查询")
                 try:
                     send_telegram(chat_id=str(chat_id), text=reply, parse_mode="HTML")
                 except Exception:
@@ -688,7 +653,8 @@ def start_scheduler() -> None:
                 name = str(item.get("name") or "digest")
                 days = item.get("days") or []
                 hhmm = str(item.get("time") or "")
-                anchor_hhmm = str(item.get("anchor_time") or "15:40")
+                # anchor_time kept for backward-compatibility; digest is always based on 'now'
+                anchor_hhmm = str(item.get("anchor_time") or "")
 
                 # days like ["Mon","Wed"]
                 day_map = {"Mon": "mon", "Tue": "tue", "Wed": "wed", "Thu": "thu", "Fri": "fri", "Sat": "sat", "Sun": "sun"}
@@ -698,7 +664,7 @@ def start_scheduler() -> None:
 
                 t = _parse_hhmm(hhmm)
                 trigger = CronTrigger(day_of_week=",".join(dows), hour=t.hour, minute=t.minute, timezone=APP_TZ)
-                sched.add_job(send_scheduled_digest, trigger=trigger, args=[name, anchor_hhmm])
+                sched.add_job(send_scheduled_digest, trigger=trigger, args=[name])
             except Exception:
                 continue
 
