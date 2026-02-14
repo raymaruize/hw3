@@ -28,20 +28,44 @@ STATE_PATH = os.getenv("PRT_ALERT_STATE_PATH", "/tmp/prt_alert_state.json")
 state = {
     "last_sent": {},  # key -> timestamp
     "telegram_update_offset": None,  # used by getUpdates polling
+    "handled_update_ids": {},  # update_id -> unix_ts (dedupe)
     "last_seen_arrival": None,  # datetime of last observed arrival (best-effort)
     "scheduler_started": False,
 }
 
 
 def _load_persisted_state() -> None:
-    """Best-effort persisted state (prevents duplicate Telegram replies after restarts)."""
+    """Best-effort persisted state.
+
+    Purpose:
+    - prevent duplicate Telegram replies after restarts
+    - keep a small dedupe cache of handled update_ids
+    """
     try:
         p = Path(STATE_PATH)
         if not p.exists():
             return
         data = json.loads(p.read_text())
-        if isinstance(data, dict) and "telegram_update_offset" in data:
-            state["telegram_update_offset"] = data.get("telegram_update_offset")
+        if not isinstance(data, dict):
+            return
+
+        state["telegram_update_offset"] = data.get("telegram_update_offset")
+        handled = data.get("handled_update_ids")
+        if isinstance(handled, dict):
+            state["handled_update_ids"] = handled
+
+        # prune old handled ids (keep 2 hours)
+        now_ts = int(dt.datetime.now(tz=APP_TZ).timestamp())
+        keep_sec = 2 * 3600
+        pruned = {}
+        for k, v in (state.get("handled_update_ids") or {}).items():
+            try:
+                iv = int(v)
+                if now_ts - iv <= keep_sec:
+                    pruned[str(k)] = iv
+            except Exception:
+                continue
+        state["handled_update_ids"] = pruned
     except Exception:
         return
 
@@ -51,6 +75,7 @@ def _save_persisted_state() -> None:
         p = Path(STATE_PATH)
         p.write_text(json.dumps({
             "telegram_update_offset": state.get("telegram_update_offset"),
+            "handled_update_ids": state.get("handled_update_ids"),
         }))
     except Exception:
         return
@@ -527,9 +552,15 @@ def poll_telegram_and_reply():
 
         for u in updates:
             try:
+                now_ts = int(dt.datetime.now(tz=APP_TZ).timestamp())
                 update_id = u.get("update_id")
                 if isinstance(update_id, int):
                     max_update_id = update_id if (max_update_id is None) else max(max_update_id, update_id)
+
+                    # De-dupe: never handle the same update_id twice (even across restarts)
+                    handled = state.get("handled_update_ids") or {}
+                    if str(update_id) in handled:
+                        continue
 
                 msg = u.get("message") or u.get("edited_message")
                 if not msg:
@@ -565,6 +596,10 @@ def poll_telegram_and_reply():
                         send_telegram(chat_id=str(chat_id), text=reply, parse_mode="HTML")
                     except Exception:
                         pass
+
+                # Mark handled after processing this update
+                if isinstance(update_id, int):
+                    state.setdefault("handled_update_ids", {})[str(update_id)] = now_ts
             except Exception:
                 continue
 
