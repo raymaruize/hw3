@@ -23,12 +23,37 @@ app = Flask(__name__)
 
 APP_TZ = ZoneInfo(os.getenv("PRT_TIMEZONE", "America/New_York"))
 
+STATE_PATH = os.getenv("PRT_ALERT_STATE_PATH", "/tmp/prt_alert_state.json")
+
 state = {
     "last_sent": {},  # key -> timestamp
     "telegram_update_offset": None,  # used by getUpdates polling
     "last_seen_arrival": None,  # datetime of last observed arrival (best-effort)
     "scheduler_started": False,
 }
+
+
+def _load_persisted_state() -> None:
+    """Best-effort persisted state (prevents duplicate Telegram replies after restarts)."""
+    try:
+        p = Path(STATE_PATH)
+        if not p.exists():
+            return
+        data = json.loads(p.read_text())
+        if isinstance(data, dict) and "telegram_update_offset" in data:
+            state["telegram_update_offset"] = data.get("telegram_update_offset")
+    except Exception:
+        return
+
+
+def _save_persisted_state() -> None:
+    try:
+        p = Path(STATE_PATH)
+        p.write_text(json.dumps({
+            "telegram_update_offset": state.get("telegram_update_offset"),
+        }))
+    except Exception:
+        return
 
 
 def load_config() -> dict:
@@ -298,6 +323,11 @@ def build_digest_reply(cfg: dict, now: dt.datetime | None = None, title: str = "
 
 def maybe_send_reminders():
     cfg = load_config()
+
+    # Old threshold-style reminders are optional. For HW4 we mainly use scheduled digests.
+    if not cfg.get("threshold_reminders_enabled", False):
+        return
+
     if not in_monitor_window(dt.datetime.now(tz=APP_TZ), cfg):
         return
 
@@ -408,6 +438,8 @@ def poll_telegram_and_reply():
     """Poll Telegram getUpdates and reply to simple commands.
 
     This avoids needing a public webhook URL.
+
+    Important: we persist the update offset to avoid duplicate replies after restarts.
     """
     token = os.getenv("TELEGRAM_BOT_TOKEN")
     if not token:
@@ -430,9 +462,14 @@ def poll_telegram_and_reply():
     if not updates:
         return
 
+    max_update_id: int | None = None
+
     for u in updates:
         try:
             update_id = u.get("update_id")
+            if isinstance(update_id, int):
+                max_update_id = update_id if (max_update_id is None) else max(max_update_id, update_id)
+
             msg = u.get("message") or u.get("edited_message")
             if not msg:
                 continue
@@ -445,6 +482,11 @@ def poll_telegram_and_reply():
             if not chat_id:
                 continue
 
+            # Only reply to the configured chat to reduce surprises
+            cfg_chat = (cfg.get("notification", {}) or {}).get("telegram_chat_id")
+            if cfg_chat and str(cfg_chat) != str(chat_id):
+                continue
+
             norm = text.lower().strip()
 
             if norm in {"next bus", "nextbus", "/nextbus", "/next", "next"}:
@@ -455,19 +497,19 @@ def poll_telegram_and_reply():
                     pass
 
             if norm in {"/digest", "digest"}:
-                # On-demand digest: next 3 buses from *now* (like the web UI)
                 now_local = dt.datetime.now(tz=APP_TZ)
                 reply = build_digest_reply(cfg, now=now_local, title="On-demand digest / 即时查询")
                 try:
                     send_telegram(chat_id=str(chat_id), text=reply, parse_mode="HTML")
                 except Exception:
                     pass
-
-            # advance offset regardless so we don't re-handle the same message
-            if isinstance(update_id, int):
-                state["telegram_update_offset"] = update_id + 1
         except Exception:
             continue
+
+    # Advance offset once, after processing the batch
+    if isinstance(max_update_id, int):
+        state["telegram_update_offset"] = max_update_id + 1
+        _save_persisted_state()
 
 
 @app.route("/", methods=["GET"])
@@ -683,6 +725,9 @@ def start_scheduler() -> None:
     sched.start()
     state["scheduler_started"] = True
 
+
+# Load persisted state before starting any polling
+_load_persisted_state()
 
 # Start scheduler when imported (gunicorn / Render)
 start_scheduler()

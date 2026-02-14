@@ -8,6 +8,7 @@
   "extra_safety_seconds": 30,
   "poll_seconds": 20,
   "remind_thresholds_seconds": [300],
+  "threshold_reminders_enabled": false,
   "ride_minutes_estimate": 14,
   "quiet_hours": {"start": "23:00", "end": "08:00"},
   "monitor": {"always_on": false, "window_minutes": 10},
