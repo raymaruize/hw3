@@ -14,7 +14,8 @@ This app makes HTTP **GET** requests to the PRT TrueTime **BusTime API v3** endp
   - hides buses missed “too long ago”
   - can show a recently missed bus as a lower-priority item
 - **Telegram integration**:
-  - scheduled reminders (when enabled)
+  - scheduled reminders (configurable schedule)
+  - on-demand digest: send `/digest` (or `/Digest`) to get the next 3 upcoming buses from **now** (like the web UI)
   - optional command: send the bot “next bus” and it replies with ETA + when to leave
 
 ## Running locally
@@ -53,6 +54,7 @@ This project is designed to be deployed as a Python web service.
 
 Notes:
 - `config.json` is ignored by git. In cloud deploys (like Render), the app falls back to `config.example.json` if `config.json` is not present.
+- Telegram scheduled digest times are configured in `telegram_digest_schedule` (see `config.example.json`).
 
 ## Files
 
