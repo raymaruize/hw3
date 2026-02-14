@@ -433,17 +433,16 @@ def send_scheduled_digest(name: str) -> None:
         pass
 
 
-def _with_lock(lock_path: str) -> bool:
-    """Acquire a non-blocking flock and keep fd in state for the duration of this call."""
+def _acquire_lock_fd(lock_path: str) -> int | None:
+    """Acquire a non-blocking flock and return the fd (caller must close)."""
     try:
         import fcntl  # type: ignore
 
         fd = os.open(lock_path, os.O_CREAT | os.O_RDWR, 0o644)
         fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
-        state["_tmp_lock_fd"] = fd  # type: ignore
-        return True
+        return fd
     except Exception:
-        return False
+        return None
 
 
 def poll_telegram_and_reply():
@@ -451,91 +450,95 @@ def poll_telegram_and_reply():
 
     This avoids needing a public webhook URL.
 
-    Important: we persist the update offset to avoid duplicate replies after restarts.
-    Also: we use a lock to ensure only one process polls/sends at a time.
+    Notes:
+    - We persist the update offset to avoid duplicate replies after restarts.
+    - We use a lock to ensure only one process polls/sends at a time.
     """
-    # Prevent duplicate replies when multiple processes/threads are running.
-    # (Common under gunicorn; also protects against overlapping scheduler ticks.)
-    if not _with_lock("/tmp/prt_alert_telegram_poll.lock"):
+
+    lock_fd = _acquire_lock_fd("/tmp/prt_alert_telegram_poll.lock")
+    if lock_fd is None:
         return
-
-    token = os.getenv("TELEGRAM_BOT_TOKEN")
-    if not token:
-        return
-
-    cfg = load_config()
-
-    params: dict = {"timeout": 0}
-    if state.get("telegram_update_offset") is not None:
-        params["offset"] = state["telegram_update_offset"]
 
     try:
-        r = requests.get(f"https://api.telegram.org/bot{token}/getUpdates", params=params, timeout=10)
-        r.raise_for_status()
-        data = r.json()
-    except Exception:
-        return
+        token = os.getenv("TELEGRAM_BOT_TOKEN")
+        if not token:
+            return
 
-    updates = data.get("result", []) if isinstance(data, dict) else []
-    if not updates:
-        return
+        cfg = load_config()
 
-    max_update_id: int | None = None
+        params: dict = {"timeout": 0}
+        if state.get("telegram_update_offset") is not None:
+            params["offset"] = state["telegram_update_offset"]
 
-    for u in updates:
         try:
-            update_id = u.get("update_id")
-            if isinstance(update_id, int):
-                max_update_id = update_id if (max_update_id is None) else max(max_update_id, update_id)
-
-            msg = u.get("message") or u.get("edited_message")
-            if not msg:
-                continue
-
-            text = (msg.get("text") or "").strip()
-            if not text:
-                continue
-
-            chat_id = (msg.get("chat") or {}).get("id")
-            if not chat_id:
-                continue
-
-            # Only reply to the configured chat to reduce surprises
-            cfg_chat = (cfg.get("notification", {}) or {}).get("telegram_chat_id")
-            if cfg_chat and str(cfg_chat) != str(chat_id):
-                continue
-
-            norm = text.lower().strip()
-
-            if norm in {"next bus", "nextbus", "/nextbus", "/next", "next"}:
-                reply = build_next_bus_reply(cfg)
-                try:
-                    send_telegram(chat_id=str(chat_id), text=reply, parse_mode=None)
-                except Exception:
-                    pass
-
-            if norm in {"/digest", "digest"}:
-                now_local = dt.datetime.now(tz=APP_TZ)
-                reply = build_digest_reply(cfg, now=now_local, title="On-demand digest / 即时查询")
-                try:
-                    send_telegram(chat_id=str(chat_id), text=reply, parse_mode="HTML")
-                except Exception:
-                    pass
+            r = requests.get(
+                f"https://api.telegram.org/bot{token}/getUpdates",
+                params=params,
+                timeout=10,
+            )
+            r.raise_for_status()
+            data = r.json()
         except Exception:
-            continue
+            return
 
-    # Advance offset once, after processing the batch
-    if isinstance(max_update_id, int):
-        state["telegram_update_offset"] = max_update_id + 1
-        _save_persisted_state()
+        updates = data.get("result", []) if isinstance(data, dict) else []
+        if not updates:
+            return
 
-    # release per-call lock fd
-    try:
-        fd = state.pop("_tmp_lock_fd", None)
-        if fd is not None:
-            os.close(fd)
-    except Exception:
-        pass
+        max_update_id: int | None = None
+
+        for u in updates:
+            try:
+                update_id = u.get("update_id")
+                if isinstance(update_id, int):
+                    max_update_id = update_id if (max_update_id is None) else max(max_update_id, update_id)
+
+                msg = u.get("message") or u.get("edited_message")
+                if not msg:
+                    continue
+
+                text = (msg.get("text") or "").strip()
+                if not text:
+                    continue
+
+                chat_id = (msg.get("chat") or {}).get("id")
+                if not chat_id:
+                    continue
+
+                # Only reply to the configured chat
+                cfg_chat = (cfg.get("notification", {}) or {}).get("telegram_chat_id")
+                if cfg_chat and str(cfg_chat) != str(chat_id):
+                    continue
+
+                norm = text.lower().strip()
+
+                if norm in {"next bus", "nextbus", "/nextbus", "/next", "next"}:
+                    reply = build_next_bus_reply(cfg)
+                    try:
+                        send_telegram(chat_id=str(chat_id), text=reply, parse_mode=None)
+                    except Exception:
+                        pass
+
+                if norm in {"/digest", "digest"}:
+                    now_local = dt.datetime.now(tz=APP_TZ)
+                    reply = build_digest_reply(cfg, now=now_local, title="On-demand digest / 即时查询")
+                    try:
+                        send_telegram(chat_id=str(chat_id), text=reply, parse_mode="HTML")
+                    except Exception:
+                        pass
+            except Exception:
+                continue
+
+        # Advance offset once, after processing the batch
+        if isinstance(max_update_id, int):
+            state["telegram_update_offset"] = max_update_id + 1
+            _save_persisted_state()
+
+    finally:
+        try:
+            os.close(lock_fd)
+        except Exception:
+            pass
 
 
 @app.route("/", methods=["GET"])
