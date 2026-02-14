@@ -577,6 +577,18 @@ def health():
     return resp
 
 
+@app.route("/version", methods=["GET"])
+def version():
+    """Build/version info to verify the deployed code on Render."""
+    resp = jsonify({
+        "render_git_commit": os.getenv("RENDER_GIT_COMMIT"),
+        "render_service_name": os.getenv("RENDER_SERVICE_NAME"),
+        "scheduler_started": bool(state.get("scheduler_started")),
+    })
+    resp.headers["Cache-Control"] = "no-store"
+    return resp
+
+
 @app.route("/update", methods=["POST"])
 def update():
     cfg = load_config()
