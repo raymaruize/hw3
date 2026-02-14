@@ -543,9 +543,10 @@ def poll_telegram_and_reply():
                 if not chat_id:
                     continue
 
-                # Only reply to the configured chat
+                # Only reply to the configured chat (if set to a real value).
+                # In Render, config.json may be absent and config.example.json contains a placeholder.
                 cfg_chat = (cfg.get("notification", {}) or {}).get("telegram_chat_id")
-                if cfg_chat and str(cfg_chat) != str(chat_id):
+                if cfg_chat and str(cfg_chat).upper() not in {"YOUR_CHAT_ID_HERE", ""} and str(cfg_chat) != str(chat_id):
                     continue
 
                 norm = text.lower().strip()
