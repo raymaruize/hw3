@@ -251,13 +251,47 @@ def _h(s: str) -> str:
     return html.escape(str(s), quote=False)
 
 
+def _select_trips_for_display(items: list[dict], now: dt.datetime) -> list[dict]:
+    """Match the web rule:
+
+    - Prefer catchable trips (leave_at in the future)
+    - Show up to 3 total
+    - Optionally include at most 1 recently-missed trip (leave_at within last 3 minutes)
+      as a single "Missed" item (the most recent one), then show upcoming after it.
+
+    This avoids showing multiple missed trips.
+    """
+    recent_missed_sec = 3 * 60
+
+    upcoming = [x for x in items if (x["leave_at"] - now).total_seconds() > 0]
+    missed_recent = [x for x in items if 0 >= (x["leave_at"] - now).total_seconds() >= -recent_missed_sec]
+
+    upcoming = sorted(upcoming, key=lambda x: x["leave_at"])  # soonest leave first
+    missed_recent = sorted(missed_recent, key=lambda x: x["leave_at"], reverse=True)  # most recent missed first
+
+    if len(upcoming) >= 3:
+        return upcoming[:3]
+
+    if len(upcoming) >= 2 and missed_recent:
+        return upcoming[:2] + missed_recent[:1]
+
+    # If only 0-1 upcoming, include at most one recently missed, then fill with upcoming
+    out: list[dict] = []
+    if missed_recent:
+        out.append(missed_recent[0])
+    out.extend(upcoming[: (3 - len(out))])
+    return out
+
+
 def build_digest_reply(cfg: dict, now: dt.datetime | None = None, title: str = "Digest / 车次汇总") -> str:
-    """Build a digest message like the web UI: next 3 upcoming buses from *now*.
+    """Build a digest message like the web UI.
 
-    - Scheduled digests: called at the configured times (MW 15:30, TTh 17:30)
-    - On-demand: via Telegram command /digest
+    Shows up to 3 items total:
+      - upcoming #1
+      - upcoming #2
+      - optional recently-missed (<=3m) if available
 
-    Shows the next 3 *upcoming* trips (by bus arrival), with Bus ETA and Leave-by time.
+    (If there's no recently missed bus, we just show upcoming items.)
     """
     now = now or dt.datetime.now(tz=APP_TZ)
 
@@ -273,11 +307,10 @@ def build_digest_reply(cfg: dict, now: dt.datetime | None = None, title: str = "
     except PRTBusTimeError as e:
         return f"<b>Error / 错误:</b> {_h(e)}"
 
+    # Build a larger candidate set so we can skip older missed trips and still find upcoming ones.
     items = []
-    for p in preds:
+    for p in preds[:12]:
         a = p["arrival"]
-        if a < now:
-            continue
         leave_at = a - dt.timedelta(minutes=leave_buffer, seconds=extra_safety)
         items.append({
             "rt": p.get("rt") or (route or ""),
@@ -286,7 +319,7 @@ def build_digest_reply(cfg: dict, now: dt.datetime | None = None, title: str = "
             "raw": p.get("raw") or {},
         })
 
-    items = sorted(items, key=lambda x: x["arrival"])[:3]
+    items = _select_trips_for_display(items, now)
 
     lines = [
         f"<b>{_h(title)}</b>",
@@ -306,12 +339,17 @@ def build_digest_reply(cfg: dict, now: dt.datetime | None = None, title: str = "
         cdn_txt = f"  <b>CDN / 倒计时:</b> {_h(cdn)}m" if (cdn is not None and str(cdn).isdigit()) else ""
 
         secs_to_leave = (x["leave_at"] - now).total_seconds()
-        leave_in = fmt_delta(secs_to_leave) if secs_to_leave >= 0 else f"-{fmt_delta(-secs_to_leave)}"
+        if secs_to_leave >= 0:
+            leave_in = fmt_delta(secs_to_leave)
+            status_txt = ""
+        else:
+            leave_in = fmt_delta(-secs_to_leave)
+            status_txt = "  <b>Status / 状态:</b> Missed"
 
         lines += [
             f"<b>{i}) Route / 线路:</b> {_h(x['rt'])}",
             f"<b>Bus ETA / 到站:</b> {_h(x['arrival'].strftime('%H:%M'))}{cdn_txt}",
-            f"<b>Leave by / 出门:</b> {_h(x['leave_at'].strftime('%H:%M'))}  <b>Leave in / 还剩:</b> {_h(leave_in)}",
+            f"<b>Leave by / 出门:</b> {_h(x['leave_at'].strftime('%H:%M'))}  <b>Leave in / 还剩:</b> {_h(leave_in)}{status_txt}",
             "",
         ]
 
@@ -548,7 +586,8 @@ def index():
 
     info = {"error": None, "arrivals": [], "leave_times": [], "preds": []}
     try:
-        preds = next_predictions(cfg["from_stop_id"], cfg.get("route"), now=now, rtpi_datafeed=cfg.get("rtpidatafeed"))[:3]
+        # Fetch more than 3 so the UI can skip missed buses and still show upcoming ones.
+        preds = next_predictions(cfg["from_stop_id"], cfg.get("route"), now=now, rtpi_datafeed=cfg.get("rtpidatafeed"))[:12]
         arrivals = [p["arrival"] for p in preds]
         info["preds"] = preds
         info["arrivals"] = arrivals
@@ -582,7 +621,8 @@ def api_next():
     now = dt.datetime.now(tz=APP_TZ)
 
     try:
-        preds = next_predictions(cfg["from_stop_id"], cfg.get("route"), now=now, rtpi_datafeed=cfg.get("rtpidatafeed"))[:3]
+        # Fetch more than 3 so clients can skip missed buses and still show upcoming ones.
+        preds = next_predictions(cfg["from_stop_id"], cfg.get("route"), now=now, rtpi_datafeed=cfg.get("rtpidatafeed"))[:12]
         arrivals = [p["arrival"] for p in preds]
 
         # remember last seen arrival time (best-effort)
