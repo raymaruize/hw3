@@ -302,7 +302,6 @@ def build_digest_reply(cfg: dict, now: dt.datetime | None = None, title: str = "
         return "\n".join(lines)
 
     for i, x in enumerate(items, start=1):
-        eta_dest = x["arrival"] + dt.timedelta(minutes=ride_min)
         cdn = (x.get("raw") or {}).get("prdctdn")
         cdn_txt = f"  <b>CDN / 倒计时:</b> {_h(cdn)}m" if (cdn is not None and str(cdn).isdigit()) else ""
 
@@ -311,7 +310,7 @@ def build_digest_reply(cfg: dict, now: dt.datetime | None = None, title: str = "
 
         lines += [
             f"<b>{i}) Route / 线路:</b> {_h(x['rt'])}",
-            f"<b>Bus ETA / 到站:</b> {_h(x['arrival'].strftime('%H:%M'))}  <b>Dest~ / 到达~:</b> {_h(eta_dest.strftime('%H:%M'))}{cdn_txt}",
+            f"<b>Bus ETA / 到站:</b> {_h(x['arrival'].strftime('%H:%M'))}{cdn_txt}",
             f"<b>Leave by / 出门:</b> {_h(x['leave_at'].strftime('%H:%M'))}  <b>Leave in / 还剩:</b> {_h(leave_in)}",
             "",
         ]
