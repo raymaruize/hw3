@@ -434,13 +434,32 @@ def send_scheduled_digest(name: str) -> None:
         pass
 
 
+def _with_lock(lock_path: str) -> bool:
+    """Acquire a non-blocking flock and keep fd in state for the duration of this call."""
+    try:
+        import fcntl  # type: ignore
+
+        fd = os.open(lock_path, os.O_CREAT | os.O_RDWR, 0o644)
+        fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        state["_tmp_lock_fd"] = fd  # type: ignore
+        return True
+    except Exception:
+        return False
+
+
 def poll_telegram_and_reply():
     """Poll Telegram getUpdates and reply to simple commands.
 
     This avoids needing a public webhook URL.
 
     Important: we persist the update offset to avoid duplicate replies after restarts.
+    Also: we use a lock to ensure only one process polls/sends at a time.
     """
+    # Prevent duplicate replies when multiple processes/threads are running.
+    # (Common under gunicorn; also protects against overlapping scheduler ticks.)
+    if not _with_lock("/tmp/prt_alert_telegram_poll.lock"):
+        return
+
     token = os.getenv("TELEGRAM_BOT_TOKEN")
     if not token:
         return
@@ -510,6 +529,14 @@ def poll_telegram_and_reply():
     if isinstance(max_update_id, int):
         state["telegram_update_offset"] = max_update_id + 1
         _save_persisted_state()
+
+    # release per-call lock fd
+    try:
+        fd = state.pop("_tmp_lock_fd", None)
+        if fd is not None:
+            os.close(fd)
+    except Exception:
+        pass
 
 
 @app.route("/", methods=["GET"])
